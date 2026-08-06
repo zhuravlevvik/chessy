@@ -32,6 +32,25 @@ def _parser() -> argparse.ArgumentParser:
     play.add_argument("--no-open", action="store_true", help="do not open the browser automatically")
     play.add_argument("--feedback-dir", type=Path, default=Path("data/human_feedback"))
     play.add_argument("--simulations", type=int, help="expert override for all strength profiles")
+    train = subparsers.add_parser("train", help="training commands")
+    train_sub = train.add_subparsers(dest="train_command", required=True)
+    smoke = train_sub.add_parser("smoke", help="run the synthetic snapshot smoke trainer")
+    smoke_group = smoke.add_mutually_exclusive_group(required=True)
+    smoke_group.add_argument("--config", type=Path)
+    smoke_group.add_argument("--resume", type=Path)
+    smoke.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"))
+    smoke.add_argument("--stop-after-steps", type=int)
+    run = subparsers.add_parser("run", help="inspect or fork local training runs")
+    run_sub = run.add_subparsers(dest="run_command", required=True)
+    inspect = run_sub.add_parser("inspect", help="show local run health")
+    inspect.add_argument("path", type=Path)
+    fork = run_sub.add_parser("fork", help="make a new run from a snapshot")
+    fork.add_argument("--snapshot", required=True, type=Path); fork.add_argument("--config", required=True, type=Path)
+    fork.add_argument("--mode", required=True, choices=("full-state", "weights-only"))
+    snapshot = subparsers.add_parser("snapshot", help="snapshot commands")
+    snapshot_sub = snapshot.add_subparsers(dest="snapshot_command", required=True)
+    verify = snapshot_sub.add_parser("verify", help="verify checksums and training state")
+    verify.add_argument("path", type=Path)
     return parser
 
 
@@ -140,8 +159,56 @@ def _run_play(args: argparse.Namespace) -> int:
             service.close()
 
 
+def _project_root() -> Path:
+    return Path.cwd()
+
+
+def _run_smoke_command(args: argparse.Namespace) -> int:
+    from chessy.training.smoke import run_smoke
+    if args.stop_after_steps is not None and args.stop_after_steps <= 0:
+        raise SystemExit("--stop-after-steps must be positive")
+    path = run_smoke(root=_project_root(), config_path=args.config, resume=args.resume, device=args.device, stop_after_steps=args.stop_after_steps)
+    print(path)
+    return 0
+
+
+def _inspect_run(path: Path) -> int:
+    from chessy.run import Run
+    from chessy.snapshot.writer import verify_snapshot
+    run = Run.open(path); snapshots = run.path / "snapshots"; index_path = snapshots / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else {}
+    status=[]
+    for item in sorted(snapshots.glob("step-*")):
+        try: verify_snapshot(item, expected_run_id=run.id, expected_fingerprint=run.fingerprint); state="valid"
+        except ValueError as exc: state=f"corrupt ({exc})"
+        status.append({"name":item.name,"status":state})
+    size=sum(p.stat().st_size for p in run.path.rglob("*") if p.is_file() and not p.is_symlink())
+    print(json.dumps({"run_id":run.id,"config_fingerprint":run.fingerprint,"latest":index.get("latest"),"best":index.get("best"),"stages":index.get("stages"),"snapshots":status,"last_metric_step":run.metrics.last_step,"disk_bytes":size,"parent":json.loads((run.path/"run_manifest.json").read_text()).get("parent")},indent=2,ensure_ascii=False))
+    return 0
+
+
+def _verify_snapshot(path: Path) -> int:
+    from chessy.snapshot.writer import verify_snapshot
+    try:
+        checked = verify_snapshot(path)
+    except (OSError, ValueError) as exc:
+        print(f"invalid snapshot: {exc}")
+        return 1
+    print(f"valid {path} step={checked['run_state']['global_step']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "play":
         return _run_play(args)
+    if args.command == "train" and args.train_command == "smoke":
+        return _run_smoke_command(args)
+    if args.command == "run" and args.run_command == "inspect":
+        return _inspect_run(args.path)
+    if args.command == "run" and args.run_command == "fork":
+        from chessy.training.smoke import fork_smoke
+        print(fork_smoke(root=_project_root(), snapshot_path=args.snapshot, config_path=args.config, mode=args.mode)); return 0
+    if args.command == "snapshot" and args.snapshot_command == "verify":
+        return _verify_snapshot(args.path)
     raise SystemExit(2)

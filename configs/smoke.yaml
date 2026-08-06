@@ -1,0 +1,37 @@
+format: chessy-config-v1
+name: snapshot-smoke
+seed: 42
+device: cpu
+model:
+  architecture: residual-cnn-v1
+  input_planes: 119
+  action_planes: 73
+  board_size: 8
+  channels: 8
+  residual_blocks: 1
+  group_norm_groups: 8
+  value_channels: 8
+  value_hidden: 16
+  value_classes: 3
+optimizer:
+  type: adamw
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  beta1: 0.9
+  beta2: 0.999
+  epsilon: 0.00000001
+scheduler:
+  type: warmup-cosine
+  warmup_steps: 2
+  total_steps: 12
+  minimum_lr_ratio: 0.0
+training:
+  batch_size: 4
+  gradient_clip_norm: 1.0
+  snapshot_every_steps: 4
+  keep_last_periodic: 2
+artifacts:
+  runs_dir: runs
+  dataset_manifest: null
+  replay_manifest: null
+  league_manifest: null
