@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A personal self-learning and personalized chess bot"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "numpy>=2,<3",
   "python-chess==1.999",
 ]
 
@@ -13,3 +14,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chessy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+]
