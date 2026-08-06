@@ -1,0 +1,37 @@
+format: chessy-config-v1
+name: personal-rl-smoke-plumbing-check
+seed: 9
+device: cpu
+model: {architecture: residual-cnn-v1, input_planes: 119, action_planes: 73, board_size: 8, channels: 8, residual_blocks: 1, group_norm_groups: 8, value_channels: 8, value_hidden: 16, value_classes: 3}
+optimizer: {type: adamw, learning_rate: 0.001, weight_decay: 0.0001, beta1: 0.9, beta2: 0.999, epsilon: 0.00000001}
+scheduler: {type: warmup-cosine, warmup_steps: 1, total_steps: 4, minimum_lr_ratio: 0.1}
+training: {batch_size: 2, gradient_clip_norm: 1.0, snapshot_every_steps: 1, keep_last_periodic: 2}
+artifacts: {runs_dir: runs, dataset_manifest: runs/personal-rl-fixture/encoded/manifests/personal-dataset-fixture.json, replay_manifest: null, league_manifest: null}
+self_play: {actors: 1, games_per_generation: 2, simulations: 1, c_puct: 1.5, root_noise: true, dirichlet_alpha: 0.3, dirichlet_epsilon: 0.25, temperature: {initial: 1.0, cutoff_ply: 2, final: 0.0}, max_game_plies: 8, inference_batch_size: 2, inference_wait_ms: 1.0, graceful_timeout_seconds: 10.0}
+replay: {root_dir: runs/personal-rl-fixture/replay, samples_per_segment: 32, active_max_samples: 64, recent_fraction: 0.5, recent_generations: 1, cache_segments: 1}
+rl: {policy_loss_weight: 1.0, value_loss_weight: 1.0, train_steps_per_generation: 4, batch_size: 2, gradient_clip_norm: 1.0}
+curriculum: {initial_stage: endgames, stage_mode: manual, stage_mix: {endgames: 1.0, reduced: 0.0, full: 0.0}, reduced_max_material_imbalance: 12}
+evaluation: {games_per_match: 2, simulations: 1, promotion_min_score: 0.55, promotion_min_games: 40, confidence_level: 0.95, require_lower_confidence_above: 0.5}
+personal_rl:
+  enabled: true
+  incumbent_export: runs/personal-rl-fixture/personal-supervised
+  allowed_incumbent_roles: [personal_supervised, personal_feedback, personal_rl]
+  base_rl_export: runs/personal-rl-fixture/base-rl
+  personal_supervised_export: runs/personal-rl-fixture/personal-supervised
+  historical_dataset_manifest: runs/personal-rl-fixture/encoded/manifests/personal-dataset-fixture.json
+  feedback_dataset_manifest: null
+  rl_policy_weight: 1.0
+  rl_value_weight: 1.0
+  style_strength: 0.20
+  style_policy_weight: 1.0
+  style_value_weight: 0.25
+  feedback_strength: 0.0
+  feedback_sample_weight: 4.0
+  historical_batch_size: 2
+  feedback_batch_size: 1
+  sample_kind_weights: {good_move: 0.75, full_game: 1.0}
+  historical_max_positions_per_game: 16
+  feedback_max_positions_per_game: 16
+  historical_ce_regression_tolerance: 0.02
+  feedback_ce_regression_tolerance: 0.02
+  minimum_style_top1_ratio: 0.95

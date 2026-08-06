@@ -70,7 +70,7 @@ def verify_snapshot(path:Path, *, expected_run_id:str|None=None, expected_finger
     try: training=torch.load(path/"training_state.pt",map_location="cpu",weights_only=True)
     except Exception as exc: raise ValueError("training state cannot be safely loaded") from exc
     required_training={"format","optimizer_state","scheduler_state","sampler_state","rng_state","gradient_scaler_state"}
-    if not isinstance(training,dict) or training.get("format")!="chessy-training-state-v1" or not required_training.issubset(training) or set(training)-required_training-{"rl_state","personal_state","feedback_state"}: raise ValueError("invalid training state")
+    if not isinstance(training,dict) or training.get("format")!="chessy-training-state-v1" or not required_training.issubset(training) or set(training)-required_training-{"rl_state","personal_state","feedback_state","personal_rl_state"}: raise ValueError("invalid training state")
     return {"run_state":state,"config":config,"model_state":model_state,"training_state":training,"checksum":sha256(path/"checksums.sha256")}
 def _index(path:Path)->dict[str,Any]:
     if not path.exists(): return {"format":"chessy-snapshot-index-v1","latest":None,"best":None,"stages":{},"snapshots":[]}

@@ -179,6 +179,60 @@ class HumanFeedbackConfig(StrictModel):
         if self.enabled != (self.dataset_manifest is not None): raise ValueError("feedback dataset_manifest is required exactly when feedback is enabled")
         return self
 
+
+class PersonalRLConfig(StrictModel):
+    """Explicit contract for RL that preserves a frozen personal style anchor."""
+    enabled: Literal[True] = True
+    incumbent_export: str
+    allowed_incumbent_roles: list[Literal["personal_supervised", "personal_feedback", "personal_rl"]] = Field(default_factory=lambda: ["personal_supervised", "personal_feedback", "personal_rl"])
+    base_rl_export: str
+    personal_supervised_export: str
+    historical_dataset_manifest: str
+    feedback_dataset_manifest: str | None = None
+    rl_policy_weight: float = Field(default=1.0, ge=0)
+    rl_value_weight: float = Field(default=1.0, ge=0)
+    style_strength: float = Field(default=.20, gt=0)
+    style_policy_weight: float = Field(default=1.0, ge=0)
+    style_value_weight: float = Field(default=.25, ge=0)
+    feedback_strength: float = Field(default=.20, ge=0)
+    feedback_sample_weight: float = Field(default=4.0, gt=0)
+    historical_batch_size: int = Field(default=16, gt=0)
+    feedback_batch_size: int = Field(default=8, gt=0)
+    sample_kind_weights: dict[Literal["good_move", "full_game"], float] = Field(default_factory=lambda: {"good_move": .75, "full_game": 1.0})
+    historical_max_positions_per_game: int = Field(default=16, gt=0)
+    feedback_max_positions_per_game: int = Field(default=16, gt=0)
+    historical_ce_regression_tolerance: float = Field(default=.02, ge=0)
+    feedback_ce_regression_tolerance: float = Field(default=.02, ge=0)
+    minimum_style_top1_ratio: float = Field(default=.95, ge=0, le=1)
+
+    @field_validator("incumbent_export", "base_rl_export", "personal_supervised_export", "historical_dataset_manifest", "feedback_dataset_manifest")
+    @classmethod
+    def safe_path(cls, value: str | None) -> str | None:
+        if value is None: return None
+        if not value or value.startswith("/") or ".." in value.split("/"):
+            raise ValueError("personal_rl paths must be relative and safe")
+        return value
+
+    @field_validator("rl_policy_weight", "rl_value_weight", "style_strength", "style_policy_weight", "style_value_weight", "feedback_strength", "feedback_sample_weight", "historical_ce_regression_tolerance", "feedback_ce_regression_tolerance", "minimum_style_top1_ratio")
+    @classmethod
+    def finite_number(cls, value: float) -> float:
+        if not math.isfinite(value): raise ValueError("personal_rl numeric settings must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def complete_feedback_and_weights(self) -> "PersonalRLConfig":
+        if not self.allowed_incumbent_roles: raise ValueError("allowed_incumbent_roles cannot be empty")
+        if len(set(self.allowed_incumbent_roles)) != len(self.allowed_incumbent_roles): raise ValueError("allowed_incumbent_roles contains duplicates")
+        if set(self.sample_kind_weights) != {"good_move", "full_game"} or any(not math.isfinite(value) or value <= 0 for value in self.sample_kind_weights.values()):
+            raise ValueError("sample_kind_weights must contain positive finite good_move and full_game weights")
+        if self.rl_policy_weight == 0 and self.rl_value_weight == 0:
+            raise ValueError("personal_rl requires a positive RL objective")
+        if self.style_policy_weight == 0 and self.style_value_weight == 0:
+            raise ValueError("personal_rl requires a positive style objective")
+        if (self.feedback_dataset_manifest is None) != (self.feedback_strength == 0):
+            raise ValueError("feedback manifest and positive feedback_strength are required together")
+        return self
+
 class ChessyConfig(StrictModel):
     format: Literal["chessy-config-v1"] = "chessy-config-v1"; name: str = Field(min_length=1, max_length=80)
     seed: int = Field(ge=0); device: Literal["auto", "cpu", "mps", "cuda"] = "auto"
@@ -192,6 +246,7 @@ class ChessyConfig(StrictModel):
     evaluation: EvaluationConfig | None = None
     personalization: PersonalizationConfig | None = None
     human_feedback: HumanFeedbackConfig | None = None
+    personal_rl: PersonalRLConfig | None = None
 
     @model_validator(mode="after")
     def complete_rl_sections(self) -> "ChessyConfig":
@@ -208,4 +263,17 @@ class ChessyConfig(StrictModel):
             raise ValueError("human feedback cannot be enabled in an RL config")
         if self.human_feedback is not None and self.human_feedback.enabled and self.personalization is None:
             raise ValueError("human feedback requires personalization")
+        if self.personal_rl is not None:
+            if not all(value is not None for value in values):
+                raise ValueError("personal_rl requires complete self_play, replay, rl, curriculum, and evaluation sections")
+            if self.personalization is not None or (self.human_feedback is not None and self.human_feedback.enabled):
+                raise ValueError("personal_rl cannot be mixed with personalization or human_feedback sections")
+            if self.training.batch_size != self.rl.batch_size:  # type: ignore[union-attr]
+                raise ValueError("training.batch_size must match rl.batch_size for personal_rl")
+            if self.training.gradient_clip_norm != self.rl.gradient_clip_norm:  # type: ignore[union-attr]
+                raise ValueError("training.gradient_clip_norm must match rl.gradient_clip_norm for personal_rl")
+            if self.personal_rl.rl_policy_weight != self.rl.policy_loss_weight or self.personal_rl.rl_value_weight != self.rl.value_loss_weight:  # type: ignore[union-attr]
+                raise ValueError("personal_rl RL weights must match the rl section")
+            if self.artifacts.dataset_manifest != self.personal_rl.historical_dataset_manifest:
+                raise ValueError("artifacts.dataset_manifest must pin personal_rl.historical_dataset_manifest")
         return self
