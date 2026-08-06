@@ -46,20 +46,20 @@ def prepare_smoke_fixture(root: Path) -> dict[str, str]:
     chess_com = raw / "chess_com.pgn"
     lichess = raw / "lichess.pgn"
     quality = raw / "game_quality.csv"
-    chess_com.write_text(_pgn("mu1876", "other", "1-0") + _pgn("mu1876", "other", "0-1"), encoding="utf-8")
+    chess_com.write_text("".join(_pgn("mu1876", "other", result) for result in ("1-0", "0-1", "1/2-1/2", "1-0", "0-1")), encoding="utf-8")
     lichess.write_text(_pgn("mu1878", "other", "1/2-1/2"), encoding="utf-8")
     with quality.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=["index", "result"]); writer.writeheader()
-        writer.writerows([{"index": 0, "result": "1-0"}, {"index": 1, "result": "0-1"}, {"index": 2, "result": "1/2-1/2"}])
+        writer.writerows([{"index": index, "result": result} for index, result in enumerate(("1-0", "0-1", "1/2-1/2", "1-0", "0-1", "1/2-1/2"))])
     rows = {
-        "train": [_row(0, "chess.com", "white", "e2e4")],
-        "val": [_row(1, "chess.com", "white", "e2e4")],
-        "test": [_row(2, "lichess", "white", "e2e4")],
+        "train": [_row(index, "chess.com", "white", "e2e4") for index in range(4)],
+        "val": [_row(4, "chess.com", "white", "e2e4")],
+        "test": [_row(5, "lichess", "white", "e2e4")],
     }
     for split, values in rows.items():
         (splits / f"{split}.jsonl").write_text("".join(json.dumps(value) + "\n" for value in values), encoding="utf-8")
     split_manifest = splits / "manifest.json"
-    split_manifest.write_text(json.dumps({"splits": {name: {"file": f"{name}.jsonl", "samples": 1, "games": 1} for name in rows}}), encoding="utf-8")
+    split_manifest.write_text(json.dumps({"splits": {name: {"file": f"{name}.jsonl", "samples": len(values), "games": len(values)} for name, values in rows.items()}}), encoding="utf-8")
     immutable = build_personal_dataset(splits=split_manifest, chess_com_pgn=chess_com, lichess_pgn=lichess, game_quality=quality, output=fixture / "encoded", segment_samples=2)
     stable_manifest = immutable.parent / "personal-dataset-fixture.json"
     if not stable_manifest.exists() or stable_manifest.read_bytes() != immutable.read_bytes():

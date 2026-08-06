@@ -19,7 +19,10 @@ def _git(root:Path)->tuple[str|None,bool|None]:
 def references(config:ChessyConfig,root:Path)->dict[str,dict[str,object]]:
     out={}
     root=root.resolve()
-    for kind,source in (("dataset",config.artifacts.dataset_manifest),("replay",config.artifacts.replay_manifest),("league",config.artifacts.league_manifest)):
+    sources=[("dataset",config.artifacts.dataset_manifest),("replay",config.artifacts.replay_manifest),("league",config.artifacts.league_manifest)]
+    if config.human_feedback is not None and config.human_feedback.enabled:
+        sources.append(("feedback",config.human_feedback.dataset_manifest))
+    for kind,source in sources:
         if source is None: out[kind]={"format":"chessy-reference-v1","kind":kind,"source":None,"source_sha256":None,"content":None}; continue
         unresolved=root/source
         if unresolved.is_symlink(): raise ValueError(f"{kind} manifest must not be a symlink")
