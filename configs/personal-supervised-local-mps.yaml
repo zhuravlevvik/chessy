@@ -1,0 +1,25 @@
+format: chessy-config-v1
+name: personal-supervised-local-mps
+seed: 42
+device: mps
+model: {architecture: residual-cnn-v1, input_planes: 119, action_planes: 73, board_size: 8, channels: 96, residual_blocks: 8, group_norm_groups: 8, value_channels: 32, value_hidden: 128, value_classes: 3}
+optimizer: {type: adamw, learning_rate: 0.0001, weight_decay: 0.0001, beta1: 0.9, beta2: 0.999, epsilon: 0.00000001}
+scheduler: {type: warmup-cosine, warmup_steps: 450, total_steps: 9000, minimum_lr_ratio: 0.05}
+training: {batch_size: 512, gradient_clip_norm: 1.0, snapshot_every_steps: 250, keep_last_periodic: 2}
+artifacts: {runs_dir: runs, dataset_manifest: data/personal/encoded/manifests/REPLACE_AFTER_BUILD.json, replay_manifest: null, league_manifest: null}
+personalization:
+  base_export: artifacts/base_rl
+  dataset_manifest: data/personal/encoded/manifests/REPLACE_AFTER_BUILD.json
+  train_split: train
+  validation_split: val
+  sample_kind_weights: {good_move: 0.75, full_game: 1.0}
+  max_positions_per_game: 16
+  policy_loss_weight: 1.0
+  value_loss_weight: 0.25
+  max_epochs: 30
+  early_stopping_patience: 5
+  early_stopping_min_delta: 0.0001
+  validation_every_epochs: 1
+  selection_metric: policy_cross_entropy
+  batch_size: 512
+  cache_segments: 2

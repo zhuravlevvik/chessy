@@ -1,0 +1,26 @@
+format: chessy-config-v1
+name: personal-supervised-smoke
+seed: 7
+device: cpu
+model: {architecture: residual-cnn-v1, input_planes: 119, action_planes: 73, board_size: 8, channels: 8, residual_blocks: 1, group_norm_groups: 8, value_channels: 8, value_hidden: 16, value_classes: 3}
+optimizer: {type: adamw, learning_rate: 0.001, weight_decay: 0.0001, beta1: 0.9, beta2: 0.999, epsilon: 0.00000001}
+scheduler: {type: warmup-cosine, warmup_steps: 1, total_steps: 32, minimum_lr_ratio: 0.1}
+training: {batch_size: 4, gradient_clip_norm: 1.0, snapshot_every_steps: 4, keep_last_periodic: 2}
+artifacts: {runs_dir: runs, dataset_manifest: runs/personal-smoke-fixture/encoded/manifests/personal-dataset-fixture.json, replay_manifest: null, league_manifest: null}
+personalization:
+  base_export: runs/personal-smoke-fixture/base
+  allow_fixture_base: true
+  dataset_manifest: runs/personal-smoke-fixture/encoded/manifests/personal-dataset-fixture.json
+  train_split: train
+  validation_split: val
+  sample_kind_weights: {good_move: 0.75, full_game: 1.0}
+  max_positions_per_game: 16
+  policy_loss_weight: 1.0
+  value_loss_weight: 0.25
+  max_epochs: 4
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.0001
+  validation_every_epochs: 1
+  selection_metric: policy_cross_entropy
+  batch_size: 4
+  cache_segments: 1

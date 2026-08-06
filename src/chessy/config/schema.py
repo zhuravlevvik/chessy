@@ -114,6 +114,45 @@ class EvaluationConfig(StrictModel):
         if value % 2: raise ValueError("games_per_match must be even for paired colors")
         return value
 
+class PersonalizationConfig(StrictModel):
+    """Configuration for the deliberately separate historical fine-tuning run."""
+    base_export: str
+    allow_fixture_base: bool = False
+    dataset_manifest: str
+    train_split: Literal["train"] = "train"
+    validation_split: Literal["val"] = "val"
+    sample_kind_weights: dict[Literal["good_move", "full_game"], float] = Field(
+        default_factory=lambda: {"good_move": 0.75, "full_game": 1.0}
+    )
+    max_positions_per_game: int = Field(default=16, gt=0)
+    policy_loss_weight: float = Field(default=1.0, ge=0)
+    value_loss_weight: float = Field(default=0.25, ge=0)
+    max_epochs: int = Field(default=30, gt=0)
+    early_stopping_patience: int = Field(default=5, gt=0)
+    early_stopping_min_delta: float = Field(default=0.0001, ge=0)
+    validation_every_epochs: int = Field(default=1, gt=0)
+    selection_metric: Literal["policy_cross_entropy"] = "policy_cross_entropy"
+    batch_size: int = Field(default=512, gt=0)
+    cache_segments: int = Field(default=2, gt=0)
+    drop_last: bool = False
+
+    @field_validator("base_export", "dataset_manifest")
+    @classmethod
+    def safe_path(cls, value: str) -> str:
+        if not value or value.startswith("/") or ".." in value.split("/"):
+            raise ValueError("personalization paths must be relative safe paths")
+        return value
+
+    @model_validator(mode="after")
+    def valid_objective(self) -> "PersonalizationConfig":
+        if set(self.sample_kind_weights) != {"good_move", "full_game"}:
+            raise ValueError("sample_kind_weights must specify good_move and full_game")
+        if any(weight <= 0 for weight in self.sample_kind_weights.values()):
+            raise ValueError("sample_kind_weights must be positive")
+        if self.policy_loss_weight == 0 and self.value_loss_weight == 0:
+            raise ValueError("at least one personal loss weight must be positive")
+        return self
+
 class ChessyConfig(StrictModel):
     format: Literal["chessy-config-v1"] = "chessy-config-v1"; name: str = Field(min_length=1, max_length=80)
     seed: int = Field(ge=0); device: Literal["auto", "cpu", "mps", "cuda"] = "auto"
@@ -125,10 +164,15 @@ class ChessyConfig(StrictModel):
     rl: RLConfig | None = None
     curriculum: CurriculumConfig | None = None
     evaluation: EvaluationConfig | None = None
+    personalization: PersonalizationConfig | None = None
 
     @model_validator(mode="after")
     def complete_rl_sections(self) -> "ChessyConfig":
         values = (self.self_play, self.replay, self.rl, self.curriculum, self.evaluation)
         if any(value is not None for value in values) and not all(value is not None for value in values):
             raise ValueError("self_play, replay, rl, curriculum, and evaluation must be configured together")
+        if self.personalization is not None and any(value is not None for value in values):
+            raise ValueError("personalization and RL sections cannot be mixed in one run config v1")
+        if self.personalization is not None and self.artifacts.dataset_manifest != self.personalization.dataset_manifest:
+            raise ValueError("artifacts.dataset_manifest must pin personalization.dataset_manifest")
         return self

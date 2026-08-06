@@ -72,6 +72,31 @@ def _parser() -> argparse.ArgumentParser:
     arena_run.add_argument("--candidate", required=True, type=Path)
     arena_run.add_argument("--opponent", required=True, choices=("random", "material"))
     arena_run.add_argument("--games", type=int, default=4)
+    dataset = subparsers.add_parser("dataset", help="immutable dataset commands")
+    dataset_sub = dataset.add_subparsers(dest="dataset_command", required=True)
+    personal = dataset_sub.add_parser("personal", help="build and inspect personal historical data")
+    personal_sub = personal.add_subparsers(dest="personal_command", required=True)
+    build = personal_sub.add_parser("build", help="encode split PGN positions with full history")
+    build.add_argument("--splits", type=Path, default=Path("data/personal/splits/manifest.json"))
+    build.add_argument("--chess-com-pgn", type=Path, default=Path("data/raw/chess_com_mu1876.pgn"))
+    build.add_argument("--lichess-pgn", type=Path, default=Path("data/raw/lichess_mu1878.pgn"))
+    build.add_argument("--game-quality", type=Path, default=Path("data/quality/game_quality.csv"))
+    build.add_argument("--output", type=Path, default=Path("data/personal/encoded"))
+    build.add_argument("--segment-samples", type=int, default=16384)
+    personal_sub.add_parser("prepare-smoke", help="generate the ignored tiny dataset and fixture model")
+    for name in ("inspect", "verify"):
+        command = personal_sub.add_parser(name, help=f"{name} a personal dataset manifest")
+        command.add_argument("--manifest", required=True, type=Path)
+    personalize = subparsers.add_parser("personalize", help="supervised personal fine-tuning")
+    personalize_sub = personalize.add_subparsers(dest="personalize_command", required=True)
+    personal_train = personalize_sub.add_parser("train", help="fine-tune an explicit base_rl export")
+    personal_group = personal_train.add_mutually_exclusive_group(required=True)
+    personal_group.add_argument("--config", type=Path); personal_group.add_argument("--resume", type=Path)
+    personal_train.add_argument("--device", choices=("auto", "cpu", "mps", "cuda")); personal_train.add_argument("--stop-after-steps", type=int)
+    personal_validate = personalize_sub.add_parser("validate", help="validate only the frozen val split")
+    personal_validate.add_argument("--model", required=True, type=Path); personal_validate.add_argument("--dataset", required=True, type=Path); personal_validate.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="cpu")
+    personal_compare = personalize_sub.add_parser("compare", help="compare base and personal models on validation")
+    personal_compare.add_argument("--base", required=True, type=Path); personal_compare.add_argument("--personal", required=True, type=Path); personal_compare.add_argument("--dataset", required=True, type=Path)
     return parser
 
 
@@ -252,6 +277,42 @@ def _arena_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _personal_dataset_command(args: argparse.Namespace) -> int:
+    from chessy.personal.builder import build_personal_dataset
+    from chessy.personal.segment import load_personal_manifest, verify_personal_manifest
+    if args.personal_command == "prepare-smoke":
+        from chessy.personal.fixture import prepare_smoke_fixture
+        print(json.dumps(prepare_smoke_fixture(_project_root()), indent=2)); return 0
+    if args.personal_command == "build":
+        if args.segment_samples <= 0:
+            raise SystemExit("--segment-samples must be positive")
+        path = build_personal_dataset(splits=args.splits, chess_com_pgn=args.chess_com_pgn, lichess_pgn=args.lichess_pgn, game_quality=args.game_quality, output=args.output, segment_samples=args.segment_samples)
+        print(path.resolve()); return 0
+    try:
+        payload = verify_personal_manifest(args.manifest) if args.personal_command == "verify" else load_personal_manifest(args.manifest)
+    except (OSError, ValueError) as exc:
+        print(f"invalid personal dataset: {exc}"); return 1
+    print(json.dumps(payload, indent=2, ensure_ascii=False)); return 0
+
+
+def _personalize_command(args: argparse.Namespace) -> int:
+    from chessy.personal.dataset import PersonalDataset
+    from chessy.personal.validation import validate
+    from chessy.training.personal_trainer import run_personal_training
+    if args.personalize_command == "train":
+        if args.stop_after_steps is not None and args.stop_after_steps <= 0:
+            raise SystemExit("--stop-after-steps must be positive")
+        print(run_personal_training(root=_project_root(), config_path=args.config, resume=args.resume, device=args.device, stop_after_steps=args.stop_after_steps)); return 0
+    dataset = PersonalDataset(args.dataset, split="val")
+    if args.personalize_command == "validate":
+        model = load_model_export(args.model, device=args.device)
+        print(json.dumps(validate(model, dataset, device=resolve_device(args.device), batch_size=512, model_checksum=json.loads((args.model / "manifest.json").read_text())["weights"]["sha256"]), indent=2)); return 0
+    base = load_model_export(args.base, device="cpu"); personal = load_model_export(args.personal, device="cpu")
+    base_report = validate(base, dataset, device=torch.device("cpu"), batch_size=512)
+    personal_report = validate(personal, dataset, device=torch.device("cpu"), batch_size=512, baseline=base_report)
+    print(json.dumps({"base": base_report, "personal": personal_report}, indent=2)); return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "play":
@@ -278,4 +339,8 @@ def main(argv: list[str] | None = None) -> int:
         return _replay_command(args)
     if args.command == "arena" and args.arena_command == "run":
         return _arena_command(args)
+    if args.command == "dataset" and args.dataset_command == "personal":
+        return _personal_dataset_command(args)
+    if args.command == "personalize":
+        return _personalize_command(args)
     raise SystemExit(2)
