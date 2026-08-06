@@ -37,3 +37,4 @@ data/quality/*.pgn
 data/personal/*.jsonl
 data/personal/*.pgn
 data/personal/splits/*.jsonl
+data/personal/encoded/

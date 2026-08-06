@@ -9,7 +9,7 @@ from chessy.config.canonical import canonical_json,fingerprint_bytes
 from chessy.config.loader import load_resolved
 from chessy.model import ChessyModel
 REQUIRED={"model.safetensors","training_state.pt","run_state.json","config.resolved.json","dataset_manifest.json","replay_manifest.json","league_manifest.json","checksums.sha256"}
-PAYLOAD=REQUIRED-{"checksums.sha256"}; STEP_RE=re.compile(r"step-\d{12}$"); CHECK_RE=re.compile(r"^([0-9a-f]{64})  ([^\s]+)$")
+PAYLOAD=REQUIRED-{"checksums.sha256"}; STEP_RE=re.compile(r"step-\d{12}(?:-\d+)?$"); CHECK_RE=re.compile(r"^([0-9a-f]{64})  ([^\s]+)$")
 def sha256(path:Path)->str:
     h=hashlib.sha256()
     with path.open("rb") as f:
@@ -35,7 +35,7 @@ def _parse_checksums(path:Path)->dict[str,str]:
     return result
 def verify_snapshot(path:Path, *, expected_run_id:str|None=None, expected_fingerprint:str|None=None)->dict[str,Any]:
     path=Path(path)
-    if not path.is_dir() or path.is_symlink() or not (STEP_RE.fullmatch(path.name) or re.fullmatch(r"\.step-\d{12}\.tmp-[A-Za-z0-9_-]+", path.name)): raise ValueError("invalid snapshot directory")
+    if not path.is_dir() or path.is_symlink() or not (STEP_RE.fullmatch(path.name) or re.fullmatch(r"\.step-\d{12}(?:-\d+)?\.tmp-[A-Za-z0-9_-]+", path.name)): raise ValueError("invalid snapshot directory")
     if {p.name for p in path.iterdir()}!=REQUIRED: raise ValueError("snapshot must contain exactly eight files")
     for name in REQUIRED:
         if not stat.S_ISREG((path/name).lstat().st_mode): raise ValueError(f"snapshot entry must be regular: {name}")
@@ -68,7 +68,7 @@ def verify_snapshot(path:Path, *, expected_run_id:str|None=None, expected_finger
     try: training=torch.load(path/"training_state.pt",map_location="cpu",weights_only=True)
     except Exception as exc: raise ValueError("training state cannot be safely loaded") from exc
     required_training={"format","optimizer_state","scheduler_state","sampler_state","rng_state","gradient_scaler_state"}
-    if not isinstance(training,dict) or training.get("format")!="chessy-training-state-v1" or not required_training.issubset(training) or set(training)-required_training-{"rl_state"}: raise ValueError("invalid training state")
+    if not isinstance(training,dict) or training.get("format")!="chessy-training-state-v1" or not required_training.issubset(training) or set(training)-required_training-{"rl_state","personal_state"}: raise ValueError("invalid training state")
     return {"run_state":state,"config":config,"model_state":model_state,"training_state":training,"checksum":sha256(path/"checksums.sha256")}
 def _index(path:Path)->dict[str,Any]:
     if not path.exists(): return {"format":"chessy-snapshot-index-v1","latest":None,"best":None,"stages":{},"snapshots":[]}
@@ -78,7 +78,12 @@ def _index(path:Path)->dict[str,Any]:
 def write_snapshot(run:Any, model:ChessyModel, training_state:dict[str,Any], run_state:dict[str,Any], *, reason:str, tags:set[str], references:dict[str,dict[str,Any]]|None=None) -> Path:
     snapshots=run.path/"snapshots"; name=f"step-{run_state['global_step']:012d}"; final=snapshots/name
     existing=_index(snapshots/"index.json")
-    if final.exists() and reason not in {"stop","completed"}: raise FileExistsError("snapshot already exists")
+    if final.exists() and reason not in {"stop","completed"}:
+        # Validation can occur immediately after a stop snapshot, without an
+        # optimizer step in between. Preserve both immutable states.
+        suffix=2
+        while (snapshots/f"{name}-{suffix}").exists(): suffix+=1
+        name=f"{name}-{suffix}"; final=snapshots/name
     if final.exists():
         entry=next((x for x in existing["snapshots"] if x["name"]==name),None)
         if entry is None: raise ValueError("existing unindexed snapshot")
