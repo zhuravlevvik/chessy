@@ -113,6 +113,17 @@ def _parser() -> argparse.ArgumentParser:
     personal_validate.add_argument("--model", required=True, type=Path); personal_validate.add_argument("--dataset", required=True, type=Path); personal_validate.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="cpu")
     personal_compare = personalize_sub.add_parser("compare", help="compare base and personal models on validation")
     personal_compare.add_argument("--base", required=True, type=Path); personal_compare.add_argument("--personal", required=True, type=Path); personal_compare.add_argument("--dataset", required=True, type=Path)
+    personal_rl = subparsers.add_parser("personal-rl", help="personal RL with a mandatory style-retention gate")
+    personal_rl_sub = personal_rl.add_subparsers(dest="personal_rl_command", required=True)
+    personal_rl_sub.add_parser("prepare-smoke", help="create ignored tiny fixtures for the plumbing smoke")
+    personal_rl_train = personal_rl_sub.add_parser("train", help="start a personal-RL run from an explicit incumbent")
+    personal_rl_train.add_argument("--config", required=True, type=Path); personal_rl_train.add_argument("--device", choices=("auto", "cpu", "mps", "cuda")); personal_rl_train.add_argument("--stop-after-steps", type=int)
+    personal_rl_resume = personal_rl_sub.add_parser("resume", help="resume a verified personal-RL snapshot")
+    personal_rl_resume.add_argument("--run", required=True, type=Path); personal_rl_resume.add_argument("--device", choices=("auto", "cpu", "mps", "cuda")); personal_rl_resume.add_argument("--stop-after-steps", type=int)
+    personal_rl_evaluate = personal_rl_sub.add_parser("evaluate", help="show persisted gate and validation reports")
+    personal_rl_evaluate.add_argument("--run", required=True, type=Path)
+    personal_rl_inspect = personal_rl_sub.add_parser("inspect", help="show personal-RL run and pinned-input health")
+    personal_rl_inspect.add_argument("--run", required=True, type=Path)
     return parser
 
 
@@ -352,6 +363,20 @@ def _personalize_command(args: argparse.Namespace) -> int:
     print(json.dumps({"base": base_report, "personal": personal_report}, indent=2)); return 0
 
 
+def _personal_rl_command(args: argparse.Namespace) -> int:
+    if args.personal_rl_command == "prepare-smoke":
+        from chessy.personal_rl.fixture import prepare_personal_rl_smoke_fixture
+        print(json.dumps(prepare_personal_rl_smoke_fixture(_project_root()), ensure_ascii=False, indent=2)); return 0
+    if args.personal_rl_command in {"train", "resume"}:
+        if args.stop_after_steps is not None and args.stop_after_steps <= 0: raise SystemExit("--stop-after-steps must be positive")
+        from chessy.training.personal_rl_trainer import run_personal_rl
+        print(run_personal_rl(root=_project_root(), config_path=getattr(args, "config", None), resume=getattr(args, "run", None), device=args.device, stop_after_steps=args.stop_after_steps)); return 0
+    run = args.run.resolve()
+    from chessy.training.personal_rl_trainer import inspect_personal_rl_run, personal_rl_evaluation_summary
+    result = inspect_personal_rl_run(root=_project_root(), run_path=run) if args.personal_rl_command == "inspect" else personal_rl_evaluation_summary(run)
+    print(json.dumps(result, ensure_ascii=False, indent=2)); return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "play":
@@ -384,4 +409,6 @@ def main(argv: list[str] | None = None) -> int:
         return _feedback_command(args)
     if args.command == "personalize":
         return _personalize_command(args)
+    if args.command == "personal-rl":
+        return _personal_rl_command(args)
     raise SystemExit(2)

@@ -40,7 +40,7 @@ class Run:
         if self.events.recovered: self.events.append_event("log_recovered",{"log":"events.jsonl"})
         if self.metrics.recovered: self.events.append_event("log_recovered",{"log":"metrics.jsonl"})
     @classmethod
-    def create(cls,root:Path,config:ChessyConfig,source:bytes,resolved:bytes,fingerprint:str,parent:dict[str,object]|None=None)->"Run":
+    def create(cls,root:Path,config:ChessyConfig,source:bytes,resolved:bytes,fingerprint:str,parent:dict[str,object]|None=None,inputs:dict[str,object]|None=None)->"Run":
         runs=(root/config.artifacts.runs_dir); runs.mkdir(parents=True,exist_ok=True)
         identifier=make_run_id(config.name,fingerprint); candidate=runs/identifier; suffix=1
         while candidate.exists(): suffix+=1; candidate=runs/f"{identifier}-{suffix}"
@@ -49,6 +49,7 @@ class Run:
             (temp/"snapshots").mkdir(); (temp/"exports").mkdir(); (temp/"config.source.yaml").write_bytes(source); (temp/"config.resolved.json").write_bytes(resolved)
             commit,dirty=_git(root); device=resolve_device(config.device)
             manifest={"format":"chessy-run-v1","run_id":candidate.name,"created_at":utcnow(),"name":config.name,"config_fingerprint":fingerprint,"git":{"commit":commit,"dirty":dirty},"uv_lock":{"sha256":_sha(root/"uv.lock") if (root/"uv.lock").is_file() else None},"python":{"version":platform.python_version(),"executable":os.sys.executable},"platform":{"system":platform.system(),"machine":platform.machine(),"release":platform.release()},"torch":{"version":torch.__version__},"requested_device":config.device,"resolved_device":device.type,"project_version":"0.1.0","parent":parent,"references":references(config,root)}
+            if inputs is not None: manifest["inputs"] = inputs
             (temp/"run_manifest.json").write_bytes(canonical_json(manifest)); temp.rename(candidate)
         except Exception:
             import shutil; shutil.rmtree(temp,ignore_errors=True); raise
