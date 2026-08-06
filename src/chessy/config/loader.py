@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import yaml
-from chessy.config.canonical import canonical_json, fingerprint
+from chessy.config.canonical import canonical_json, fingerprint_bytes
 from chessy.config.schema import ChessyConfig
 
 def load_config(path: Path) -> tuple[ChessyConfig, bytes, bytes, str]:
@@ -11,7 +11,7 @@ def load_config(path: Path) -> tuple[ChessyConfig, bytes, bytes, str]:
     if not isinstance(raw, dict): raise ValueError("config root must be a mapping")
     config = ChessyConfig.model_validate(raw)
     resolved = canonical_json(config.model_dump(mode="json"))
-    return config, source, resolved, fingerprint(config.model_dump(mode="json"))
+    return config, source, resolved, fingerprint_bytes(resolved)
 
 def load_resolved(data: bytes) -> ChessyConfig:
     import json

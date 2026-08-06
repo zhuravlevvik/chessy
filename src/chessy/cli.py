@@ -40,6 +40,16 @@ def _parser() -> argparse.ArgumentParser:
     smoke_group.add_argument("--resume", type=Path)
     smoke.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"))
     smoke.add_argument("--stop-after-steps", type=int)
+    rl = train_sub.add_parser("rl", help="run one local self-play RL generation")
+    rl_group = rl.add_mutually_exclusive_group(required=True)
+    rl_group.add_argument("--config", type=Path)
+    rl_group.add_argument("--resume", type=Path)
+    rl.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"))
+    rl.add_argument("--stop-after-steps", type=int)
+    selfplay = subparsers.add_parser("selfplay", help="self-play convenience commands")
+    selfplay_sub = selfplay.add_subparsers(dest="selfplay_command", required=True)
+    selfplay_smoke = selfplay_sub.add_parser("smoke", help="run the tiny end-to-end self-play smoke generation")
+    selfplay_smoke.add_argument("--config", required=True, type=Path)
     run = subparsers.add_parser("run", help="inspect or fork local training runs")
     run_sub = run.add_subparsers(dest="run_command", required=True)
     inspect = run_sub.add_parser("inspect", help="show local run health")
@@ -51,6 +61,17 @@ def _parser() -> argparse.ArgumentParser:
     snapshot_sub = snapshot.add_subparsers(dest="snapshot_command", required=True)
     verify = snapshot_sub.add_parser("verify", help="verify checksums and training state")
     verify.add_argument("path", type=Path)
+    replay = subparsers.add_parser("replay", help="inspect or verify immutable replay")
+    replay_sub = replay.add_subparsers(dest="replay_command", required=True)
+    for name in ("inspect", "verify"):
+        command = replay_sub.add_parser(name, help=f"{name} a replay manifest")
+        command.add_argument("path", type=Path)
+    arena = subparsers.add_parser("arena", help="run a small deterministic arena")
+    arena_sub = arena.add_subparsers(dest="arena_command", required=True)
+    arena_run = arena_sub.add_parser("run", help="compare an export against a baseline")
+    arena_run.add_argument("--candidate", required=True, type=Path)
+    arena_run.add_argument("--opponent", required=True, choices=("random", "material"))
+    arena_run.add_argument("--games", type=int, default=4)
     return parser
 
 
@@ -198,12 +219,54 @@ def _verify_snapshot(path: Path) -> int:
     return 0
 
 
+def _run_rl_command(args: argparse.Namespace) -> int:
+    from chessy.training.rl_trainer import run_rl
+    if args.stop_after_steps is not None and args.stop_after_steps <= 0:
+        raise SystemExit("--stop-after-steps must be positive")
+    print(run_rl(root=_project_root(), config_path=args.config, resume=args.resume, device=args.device, stop_after_steps=args.stop_after_steps))
+    return 0
+
+
+def _replay_command(args: argparse.Namespace) -> int:
+    from chessy.replay import load_manifest
+    try:
+        manifest = load_manifest(args.path, verify=args.replay_command == "verify")
+    except (OSError, ValueError) as exc:
+        print(f"invalid replay manifest: {exc}")
+        return 1
+    print(json.dumps(manifest.content, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _arena_command(args: argparse.Namespace) -> int:
+    if args.games <= 0:
+        raise SystemExit("--games must be positive")
+    from chessy.curriculum.sources import FullSource
+    from chessy.evaluation import MCTSAgent, MaterialAgent, RandomAgent, run_arena
+    from chessy.mcts import DirectModelEvaluator
+    model = load_model_export(args.candidate, device="cpu")
+    candidate_checksum = json.loads((args.candidate / "manifest.json").read_text(encoding="utf-8"))["weights"]["sha256"]
+    opponent = RandomAgent(0) if args.opponent == "random" else MaterialAgent()
+    report = run_arena(candidate=MCTSAgent(DirectModelEvaluator(model), 4), opponent=opponent, positions=[FullSource().sample(__import__("numpy").random.default_rng(0))], games=args.games, max_plies=160, candidate_checksum=candidate_checksum, opponent_checksum=args.opponent, promotion_min_games=40)
+    print(json.dumps(__import__("dataclasses").asdict(report), indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "play":
         return _run_play(args)
     if args.command == "train" and args.train_command == "smoke":
         return _run_smoke_command(args)
+    if args.command == "train" and args.train_command == "rl":
+        return _run_rl_command(args)
+    if args.command == "selfplay" and args.selfplay_command == "smoke":
+        # The smoke command intentionally completes the generation so its
+        # replay segment is trained and then checked by arena plumbing.
+        args.resume = None
+        args.device = None
+        args.stop_after_steps = None
+        return _run_rl_command(args)
     if args.command == "run" and args.run_command == "inspect":
         return _inspect_run(args.path)
     if args.command == "run" and args.run_command == "fork":
@@ -211,4 +274,8 @@ def main(argv: list[str] | None = None) -> int:
         print(fork_smoke(root=_project_root(), snapshot_path=args.snapshot, config_path=args.config, mode=args.mode)); return 0
     if args.command == "snapshot" and args.snapshot_command == "verify":
         return _verify_snapshot(args.path)
+    if args.command == "replay":
+        return _replay_command(args)
+    if args.command == "arena" and args.arena_command == "run":
+        return _arena_command(args)
     raise SystemExit(2)

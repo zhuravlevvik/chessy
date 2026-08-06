@@ -23,3 +23,15 @@ def canonical_json(value: Any) -> bytes:
 
 def fingerprint(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).rstrip(b"\n")).hexdigest()
+
+
+def fingerprint_bytes(resolved: bytes) -> str:
+    """Fingerprint the *stored* canonical resolved-config bytes.
+
+    This deliberately does not parse through the current schema.  A later
+    schema may add defaults, while historical runs must retain their original
+    identity.
+    """
+    if not isinstance(resolved, bytes) or not resolved:
+        raise ValueError("resolved config must be non-empty bytes")
+    return hashlib.sha256(resolved.rstrip(b"\n")).hexdigest()

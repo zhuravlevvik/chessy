@@ -5,7 +5,7 @@ from pathlib import Path,PurePath
 from typing import Any
 import torch
 from safetensors.torch import save_file,load_file
-from chessy.config.canonical import canonical_json,fingerprint
+from chessy.config.canonical import canonical_json,fingerprint_bytes
 from chessy.config.loader import load_resolved
 from chessy.model import ChessyModel
 REQUIRED={"model.safetensors","training_state.pt","run_state.json","config.resolved.json","dataset_manifest.json","replay_manifest.json","league_manifest.json","checksums.sha256"}
@@ -46,12 +46,17 @@ def verify_snapshot(path:Path, *, expected_run_id:str|None=None, expected_finger
         state=json.loads((path/"run_state.json").read_text()); config=load_resolved((path/"config.resolved.json").read_bytes())
     except (UnicodeDecodeError,json.JSONDecodeError) as exc: raise ValueError("invalid snapshot JSON") from exc
     if state.get("format")!="chessy-run-state-v1": raise ValueError("wrong run state format")
-    config_fp=fingerprint(config.model_dump(mode="json"))
+    config_fp=fingerprint_bytes((path/"config.resolved.json").read_bytes())
     if state.get("config_fingerprint")!=config_fp or (expected_fingerprint and config_fp!=expected_fingerprint): raise ValueError("snapshot config fingerprint mismatch")
     if expected_run_id and state.get("run_id")!=expected_run_id: raise ValueError("snapshot run ID mismatch")
     for kind in ("dataset","replay","league"):
         ref=json.loads((path/f"{kind}_manifest.json").read_text())
         if ref.get("format")!="chessy-reference-v1" or ref.get("kind")!=kind: raise ValueError("invalid reference manifest")
+        if ref.get("source") is None:
+            if ref.get("source_sha256") is not None or ref.get("content") is not None: raise ValueError("invalid empty reference manifest")
+        else:
+            source=ref.get("source"); checksum=ref.get("source_sha256")
+            if not isinstance(source,str) or Path(source).is_absolute() or ".." in Path(source).parts or not isinstance(checksum,str) or re.fullmatch(r"[0-9a-f]{64}",checksum) is None or ref.get("content") is None: raise ValueError("invalid populated reference manifest")
     try: model_state=load_file(str(path/"model.safetensors"),device="cpu")
     except Exception as exc: raise ValueError("invalid safetensors model") from exc
     # Verification must not advance the caller's training RNG stream.
@@ -62,14 +67,15 @@ def verify_snapshot(path:Path, *, expected_run_id:str|None=None, expected_finger
     if sum(t.numel() for t in model_state.values())!=state.get("model_parameter_count"): raise ValueError("model parameter count mismatch")
     try: training=torch.load(path/"training_state.pt",map_location="cpu",weights_only=True)
     except Exception as exc: raise ValueError("training state cannot be safely loaded") from exc
-    if not isinstance(training,dict) or training.get("format")!="chessy-training-state-v1" or set(training)!={"format","optimizer_state","scheduler_state","sampler_state","rng_state","gradient_scaler_state"}: raise ValueError("invalid training state")
+    required_training={"format","optimizer_state","scheduler_state","sampler_state","rng_state","gradient_scaler_state"}
+    if not isinstance(training,dict) or training.get("format")!="chessy-training-state-v1" or not required_training.issubset(training) or set(training)-required_training-{"rl_state"}: raise ValueError("invalid training state")
     return {"run_state":state,"config":config,"model_state":model_state,"training_state":training,"checksum":sha256(path/"checksums.sha256")}
 def _index(path:Path)->dict[str,Any]:
     if not path.exists(): return {"format":"chessy-snapshot-index-v1","latest":None,"best":None,"stages":{},"snapshots":[]}
     result=json.loads(path.read_text())
     if result.get("format")!="chessy-snapshot-index-v1": raise ValueError("invalid snapshot index")
     return result
-def write_snapshot(run:Any, model:ChessyModel, training_state:dict[str,Any], run_state:dict[str,Any], *, reason:str, tags:set[str]) -> Path:
+def write_snapshot(run:Any, model:ChessyModel, training_state:dict[str,Any], run_state:dict[str,Any], *, reason:str, tags:set[str], references:dict[str,dict[str,Any]]|None=None) -> Path:
     snapshots=run.path/"snapshots"; name=f"step-{run_state['global_step']:012d}"; final=snapshots/name
     existing=_index(snapshots/"index.json")
     if final.exists() and reason not in {"stop","completed"}: raise FileExistsError("snapshot already exists")
@@ -84,7 +90,8 @@ def write_snapshot(run:Any, model:ChessyModel, training_state:dict[str,Any], run
         model_state={n:t.detach().to("cpu",torch.float32).contiguous() for n,t in sorted(model.state_dict().items())}; save_file(model_state,str(temporary/"model.safetensors"))
         torch.save(training_state,temporary/"training_state.pt")
         (temporary/"run_state.json").write_bytes(canonical_json(run_state)); (temporary/"config.resolved.json").write_bytes((run.path/"config.resolved.json").read_bytes())
-        refs=json.loads((run.path/"run_manifest.json").read_text())["references"]
+        refs=references or json.loads((run.path/"run_manifest.json").read_text())["references"]
+        if set(refs)!={"dataset","replay","league"}: raise ValueError("snapshot references must contain dataset, replay, and league")
         for kind in ("dataset","replay","league"): (temporary/f"{kind}_manifest.json").write_bytes(canonical_json(refs[kind]))
         for name2 in PAYLOAD: _fsync(temporary/name2)
         (temporary/"checksums.sha256").write_text("".join(f"{sha256(temporary/n)}  {n}\n" for n in sorted(PAYLOAD)),encoding="utf-8"); _fsync(temporary/"checksums.sha256")

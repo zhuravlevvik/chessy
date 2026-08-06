@@ -24,6 +24,7 @@ ui/dist/
 # Local training runs, model weights, and replay data
 runs/
 data/replay/
+/replay/
 data/human_feedback/
 *.safetensors
 *.pt

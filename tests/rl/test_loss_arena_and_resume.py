@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import torch
+
+from chessy.chess import ChessEnvironment
+from chessy.evaluation import MaterialAgent, RandomAgent
+from chessy.evaluation.arena import paired_schedule
+from chessy.snapshot.loader import select_snapshot
+from chessy.run import Run
+from chessy.training.rl_loss import policy_value_loss
+from chessy.training.rl_trainer import run_rl
+
+
+CONFIG="""format: chessy-config-v1
+name: rl-test
+seed: 7
+device: cpu
+model: {architecture: residual-cnn-v1, input_planes: 119, action_planes: 73, board_size: 8, channels: 8, residual_blocks: 1, group_norm_groups: 8, value_channels: 8, value_hidden: 16, value_classes: 3}
+optimizer: {type: adamw, learning_rate: 0.0003, weight_decay: 0.0001, beta1: 0.9, beta2: 0.999, epsilon: 0.00000001}
+scheduler: {type: warmup-cosine, warmup_steps: 1, total_steps: 2, minimum_lr_ratio: 0.0}
+training: {batch_size: 2, gradient_clip_norm: 1.0, snapshot_every_steps: 1, keep_last_periodic: 2}
+artifacts: {runs_dir: runs, dataset_manifest: null, replay_manifest: null, league_manifest: null}
+self_play: {actors: 1, games_per_generation: 2, simulations: 1, c_puct: 1.5, root_noise: true, dirichlet_alpha: 0.3, dirichlet_epsilon: 0.25, temperature: {initial: 0.0, cutoff_ply: 0, final: 0.0}, max_game_plies: 2, inference_batch_size: 2, inference_wait_ms: 0.0}
+replay: {root_dir: replay, samples_per_segment: 4, active_max_samples: 16, recent_fraction: 0.5, recent_generations: 1, cache_segments: 1}
+rl: {policy_loss_weight: 1.0, value_loss_weight: 1.0, train_steps_per_generation: 2, batch_size: 2, gradient_clip_norm: 1.0}
+curriculum: {initial_stage: endgames, stage_mode: manual, stage_mix: {endgames: 1.0, reduced: 0.0, full: 0.0}}
+evaluation: {games_per_match: 2, simulations: 1, promotion_min_score: 0.55, promotion_min_games: 40}
+"""
+
+
+def test_policy_loss_masks_illegal_logits() -> None:
+    logits=torch.tensor([[1.,2.,100.]],requires_grad=True); values=torch.tensor([[0.,0.,0.]],requires_grad=True)
+    target=torch.tensor([[.25,.75,0.]]); mask=torch.tensor([[True,True,False]]); classes=torch.tensor([1])
+    first,_=policy_value_loss(logits,values,target,mask,classes)
+    changed=logits.detach().clone(); changed[0,2]=-100.; changed.requires_grad_()
+    second,_=policy_value_loss(changed,values,target,mask,classes)
+    assert torch.allclose(first,second)
+
+
+def test_arena_schedule_pairs_each_position_with_both_colors() -> None:
+    first,second=object(),object()
+    assert paired_schedule([first,second],4)==[(first,True),(first,False),(second,True),(second,False)]
+
+
+def test_fixed_baselines_are_legal_and_material_agent_takes_mate() -> None:
+    first=RandomAgent(9).select(ChessEnvironment()); second=RandomAgent(9).select(ChessEnvironment())
+    assert first==second and first in ChessEnvironment().legal_moves()
+    ending=ChessEnvironment.from_fen("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1")
+    ending.push(MaterialAgent(2).select(ending))
+    assert ending.outcome() is not None and ending.outcome().winner is True
+
+
+def _model_state(path: Path):
+    run=Run.open(path); _,checked,_=select_snapshot(run); return checked
+
+
+def test_rl_stop_and_resume_matches_uninterrupted_weights(tmp_path: Path) -> None:
+    config=tmp_path/"rl.yaml"; config.write_text(CONFIG)
+    uninterrupted=run_rl(root=tmp_path,config_path=config)
+    stopped=run_rl(root=tmp_path,config_path=config,stop_after_steps=1)
+    run_rl(root=tmp_path,resume=stopped)
+    left,right=_model_state(uninterrupted),_model_state(stopped)
+    assert left["run_state"]["global_step"]==right["run_state"]["global_step"]==2
+    assert left["run_state"]["phase"]==right["run_state"]["phase"]=="complete"
+    assert left["model_state"].keys()==right["model_state"].keys()
+    assert all(torch.equal(left["model_state"][key],right["model_state"][key]) for key in left["model_state"])
+    replay_ref=right["run_state"]["replay_manifest"]
+    assert replay_ref and (tmp_path/replay_ref).is_file()

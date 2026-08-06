@@ -30,6 +30,39 @@ class SearchResult:
     simulations: int
 
 
+def visit_policy(result: SearchResult) -> dict[int, float]:
+    """Return the raw-root-visit target, independent of move temperature."""
+    if not result.policy:
+        raise ValueError("cannot build a policy from an empty root")
+    actions = sorted(result.policy)
+    visits = np.asarray([result.policy[action].visits for action in actions], dtype=np.float64)
+    if not np.isfinite(visits).all() or (visits < 0).any():
+        raise ValueError("root visits must be finite and non-negative")
+    total = float(visits.sum())
+    if total <= 0:
+        raise ValueError("root visit total must be positive")
+    return {action: float(count / total) for action, count in zip(actions, visits, strict=True)}
+
+
+def sample_action(result: SearchResult, *, temperature: float, rng: np.random.Generator) -> int:
+    """Sample a move from raw visits without modifying the saved MCTS target."""
+    if not isinstance(temperature, (int, float)) or isinstance(temperature, bool) or not np.isfinite(temperature) or temperature < 0:
+        raise ValueError("temperature must be a finite non-negative number")
+    if not isinstance(rng, np.random.Generator):
+        raise ValueError("rng must be a numpy Generator")
+    target = visit_policy(result)
+    actions = np.asarray(sorted(target), dtype=np.int64)
+    visits = np.asarray([result.policy[int(action)].visits for action in actions], dtype=np.float64)
+    if temperature == 0:
+        best = int(visits.max())
+        return min(int(action) for action, count in zip(actions, visits, strict=True) if int(count) == best)
+    weights = np.power(visits, 1.0 / float(temperature))
+    total = float(weights.sum())
+    if not np.isfinite(total) or total <= 0:
+        raise ValueError("temperature sampling requires positive visit weights")
+    return int(rng.choice(actions, p=weights / total))
+
+
 def position_fingerprint(environment: ChessEnvironment) -> tuple[str, ...]:
     # All current-to-past states that affect board119-v1, including repetition state.
     return tuple(
@@ -133,16 +166,9 @@ class MCTS:
 
         visits = np.array([root.children[action].visit_count for action in sorted(root.children)], dtype=np.float64)
         actions = np.array(sorted(root.children), dtype=np.int64)
-        if self.config.temperature == 0:
-            best_visits = int(visits.max())
-            chosen = min(int(action) for action, count in zip(actions, visits, strict=True) if int(count) == best_visits)
-            probabilities = visits / visits.sum()
-        else:
-            weights = np.power(visits, 1.0 / self.config.temperature)
-            if weights.sum() == 0:
-                weights = np.ones_like(weights)
-            probabilities = weights / weights.sum()
-            chosen = int(self._rng.choice(actions, p=probabilities))
+        if visits.sum() <= 0:
+            raise ValueError("MCTS completed without root visits")
+        probabilities = visits / visits.sum()
         visit_policy = {
             int(action): SearchAction(
                 visits=int(root.children[int(action)].visit_count),
@@ -151,12 +177,17 @@ class MCTS:
             )
             for action, probability in zip(actions, probabilities, strict=True)
         }
-        return SearchResult(
-            action=chosen,
-            move=decode_action(environment.board, chosen),
+        provisional = SearchResult(
+            action=int(actions[0]),
+            move=decode_action(environment.board, int(actions[0])),
             policy=visit_policy,
             root_value=root.mean_value,
             simulations=self.config.simulations,
+        )
+        chosen = sample_action(provisional, temperature=self.config.temperature, rng=self._rng)
+        return SearchResult(
+            action=chosen, move=decode_action(environment.board, chosen), policy=visit_policy,
+            root_value=root.mean_value, simulations=self.config.simulations,
         )
 
     def advance(self, environment: ChessEnvironment, action: int) -> bool:
