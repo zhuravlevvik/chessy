@@ -28,6 +28,7 @@ def make_client(tmp_path: Path, *, static: bool = False) -> tuple[TestClient, Se
     registry = SessionRegistry(
         [ModelRuntime(info, UniformEvaluator())],
         feedback_dir=tmp_path / "feedback",
+        observer_runs_dir=tmp_path / "runs",
         simulations_override=2,
     )
     static_dir = None
@@ -106,3 +107,21 @@ def test_black_game_starts_bot_outside_request_loop(tmp_path: Path) -> None:
             assert state["type"] == "state"
             # The bot task may already have completed; either authoritative state is valid.
             assert state["payload"]["human_color"] == "black"
+
+
+def test_training_observer_api_lists_live_and_archive(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+    from chessy.observer import TrainingObserver
+
+    run = tmp_path / "runs" / "run-one"; observer = TrainingObserver(run, enabled=True, archive_every_generations=1, live_game_index=0)
+    observer.live_update({"status": "playing", "generation": 2, "game_index": 0, "model_checksum": "a" * 64, "initial_fen": chess.STARTING_FEN, "fen": chess.STARTING_FEN, "result": "*", "termination": None, "frames": [{"ply": 0, "fen": chess.STARTING_FEN, "uci": None, "san": None}]})
+    game = SimpleNamespace(sealed=SimpleNamespace(game_index=0, generation=2, pgn='[Result "1-0"]\n\n1. e4 e5 1-0\n', result="1-0", termination="fixture"))
+    observer.archive(game, "a" * 64)
+    client, _ = make_client(tmp_path)
+    with client:
+        games = client.get("/api/observer/games").json()["games"]
+        assert {item["kind"] for item in games} == {"live", "archive"}
+        assert "frames" not in games[0] and games[0]["plies"] == 2
+        detail = client.get(f"/api/observer/games/{games[0]['id']}")
+        assert detail.status_code == 200 and detail.json()["frames"][-1]["san"] == "e5"
+        assert client.get("/api/observer/games/../../etc").status_code == 404

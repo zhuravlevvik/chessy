@@ -209,6 +209,7 @@ def _run_play(args: argparse.Namespace) -> int:
         registry = SessionRegistry(
             runtimes,
             feedback_dir=feedback_dir,
+            observer_runs_dir=_project_root() / "runs",
             simulations_override=args.simulations,
         )
         app = create_app(registry, static_dir=static_dir)

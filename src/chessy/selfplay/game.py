@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import hashlib, time
+from typing import Any, Callable
 import chess, chess.pgn
 import numpy as np
 from chessy.chess import ChessEnvironment
@@ -23,9 +24,10 @@ def _wdl(outcome: chess.Outcome, turn: chess.Color) -> int:
     if outcome.winner is None: return 1
     return 2 if outcome.winner == turn else 0
 
-def play_game(*, run_id:str, run_seed:int, generation:int, game_index:int, actor_id:int, start, mcts:MCTS, schedule:TemperatureSchedule, model_checksum:str, stop_requested=None) -> SelfPlayGame | None:
+def play_game(*, run_id:str, run_seed:int, generation:int, game_index:int, actor_id:int, start, mcts:MCTS, schedule:TemperatureSchedule, model_checksum:str, stop_requested=None, observer_update:Callable[[dict[str,Any]],None]|None=None) -> SelfPlayGame | None:
     """Play one complete game. Interrupted games are intentionally not replay."""
-    seed=derive_seed(run_seed,generation,actor_id,game_index); rng=np.random.default_rng(seed); environment=ChessEnvironment.from_fen(start.fen); began=time.monotonic(); pending=[]; moves=[]
+    seed=derive_seed(run_seed,generation,actor_id,game_index); rng=np.random.default_rng(seed); environment=ChessEnvironment.from_fen(start.fen); began=time.monotonic(); pending=[]; moves=[]; move_records=[]
+    if observer_update: observer_update({"status":"playing","generation":generation,"game_index":game_index,"model_checksum":model_checksum,"initial_fen":start.fen,"fen":start.fen,"result":"*","termination":None,"frames":[{"ply":0,"fen":start.fen,"uci":None,"san":None}]})
     while not environment.is_terminal() and len(pending) < start.max_plies:
         if stop_requested is not None and stop_requested.is_set(): return None
         board=environment.board; result=mcts.search(environment)
@@ -33,9 +35,10 @@ def play_game(*, run_id:str, run_seed:int, generation:int, game_index:int, actor
         # complete legal mask. Zero-visit actions simply receive zero target mass.
         actions=tuple(sorted(result.policy)); visits=tuple(result.policy[a].visits for a in actions)
         action=sample_action(result,temperature=schedule.for_ply(len(pending)),rng=rng)
-        move=decode_action(board,action)
+        move=decode_action(board,action); san=board.san(move)
         pending.append((encode_board(environment.history()),actions,visits,action,board.turn))
-        moves.append(move); environment.push(move); mcts.advance(environment,action)
+        moves.append(move); environment.push(move); mcts.advance(environment,action); move_records.append({"ply":len(moves),"fen":environment.fen(),"uci":move.uci(),"san":san})
+        if observer_update: observer_update({"status":"playing","generation":generation,"game_index":game_index,"model_checksum":model_checksum,"initial_fen":start.fen,"fen":environment.fen(),"result":"*","termination":None,"frames":[{"ply":0,"fen":start.fen,"uci":None,"san":None},*move_records]})
     outcome=environment.outcome(); termination="max-plies" if outcome is None else outcome.termination.name.lower().replace("_","-")
     result_text="1/2-1/2" if outcome is None or outcome.winner is None else ("1-0" if outcome.winner else "0-1")
     samples=tuple(ReplaySample(board=board,policy_actions=actions,policy_visits=visits,selected_action=action,value_class=(1 if outcome is None else _wdl(outcome,turn)),game_index=game_index,ply=ply,generation=generation) for ply,(board,actions,visits,action,turn) in enumerate(pending))

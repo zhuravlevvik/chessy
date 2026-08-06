@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from chessy.api.schemas import ClientEnvelope, CreateGameRequest, EmptyPayload, FeedbackRequest, MovePayload
 from chessy.api.sessions import SessionRegistry
 from chessy.play import GameSession, save_human_feedback
+from chessy.observer import discover_observer_games, observer_game
 
 MAX_WS_PAYLOAD_BYTES = 16 * 1024
 
@@ -124,6 +125,19 @@ def create_app(registry: SessionRegistry, *, static_dir: Path | None = None) -> 
     @app.get("/api/models")
     async def models() -> dict[str, object]:
         return {"models": registry.public_models()}
+
+    @app.get("/api/observer/games")
+    async def observer_games() -> dict[str, object]:
+        if registry.observer_runs_dir is None: return {"games": []}
+        games = await asyncio.to_thread(discover_observer_games, registry.observer_runs_dir)
+        summaries = [{key: value for key, value in game.items() if key != "frames"} | {"plies": max(0, len(game.get("frames", [])) - 1)} for game in games]
+        return {"games": summaries}
+
+    @app.get("/api/observer/games/{game_id}")
+    async def observer_game_detail(game_id: str) -> dict[str, object]:
+        if registry.observer_runs_dir is None: raise HTTPException(status_code=404, detail="observer game not found")
+        try: return await asyncio.to_thread(observer_game, registry.observer_runs_dir, game_id)
+        except KeyError as exc: raise HTTPException(status_code=404, detail="observer game not found") from exc
 
     @app.post("/api/games", status_code=201)
     async def create_game(request: CreateGameRequest) -> dict[str, object]:

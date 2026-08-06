@@ -115,6 +115,13 @@ class EvaluationConfig(StrictModel):
         if value % 2: raise ValueError("games_per_match must be even for paired colors")
         return value
 
+
+class ObserverConfig(StrictModel):
+    enabled: bool = True
+    archive_every_generations: int = Field(default=1, gt=0)
+    live_game_index: int = Field(default=0, ge=0)
+
+
 class PersonalizationConfig(StrictModel):
     """Configuration for the deliberately separate historical fine-tuning run."""
     base_export: str
@@ -247,6 +254,7 @@ class ChessyConfig(StrictModel):
     personalization: PersonalizationConfig | None = None
     human_feedback: HumanFeedbackConfig | None = None
     personal_rl: PersonalRLConfig | None = None
+    observer: ObserverConfig | None = None
 
     @model_validator(mode="after")
     def complete_rl_sections(self) -> "ChessyConfig":
@@ -276,4 +284,8 @@ class ChessyConfig(StrictModel):
                 raise ValueError("personal_rl RL weights must match the rl section")
             if self.artifacts.dataset_manifest != self.personal_rl.historical_dataset_manifest:
                 raise ValueError("artifacts.dataset_manifest must pin personal_rl.historical_dataset_manifest")
+        if self.observer is not None and self.observer.enabled and not all(value is not None for value in values):
+            raise ValueError("training observer requires complete RL sections")
+        if self.observer is not None and self.self_play is not None and self.observer.live_game_index >= self.self_play.games_per_generation:
+            raise ValueError("observer live_game_index must identify a generated game")
         return self

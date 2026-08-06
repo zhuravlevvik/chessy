@@ -22,6 +22,7 @@ class SessionRegistry:
         models: list[ModelRuntime],
         *,
         feedback_dir: Path,
+        observer_runs_dir: Path | None = None,
         max_active_sessions: int = 8,
         simulations_override: int | None = None,
     ) -> None:
@@ -33,6 +34,7 @@ class SessionRegistry:
         if len(self.models) != len(models):
             raise ValueError("model IDs must be unique")
         self.feedback_dir = Path(feedback_dir)
+        self.observer_runs_dir = None if observer_runs_dir is None else Path(observer_runs_dir)
         self.max_active_sessions = max_active_sessions
         self.simulations_override = simulations_override
         self.sessions: dict[str, GameSession] = {}

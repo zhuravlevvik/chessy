@@ -12,6 +12,7 @@ replay: {root_dir: runs/personal-rl-fixture/replay, samples_per_segment: 32, act
 rl: {policy_loss_weight: 1.0, value_loss_weight: 1.0, train_steps_per_generation: 4, batch_size: 2, gradient_clip_norm: 1.0}
 curriculum: {initial_stage: endgames, stage_mode: manual, stage_mix: {endgames: 1.0, reduced: 0.0, full: 0.0}, reduced_max_material_imbalance: 12}
 evaluation: {games_per_match: 2, simulations: 1, promotion_min_score: 0.55, promotion_min_games: 40, confidence_level: 0.95, require_lower_confidence_above: 0.5}
+observer: {enabled: true, archive_every_generations: 1, live_game_index: 0}
 personal_rl:
   enabled: true
   incumbent_export: runs/personal-rl-fixture/personal-supervised
