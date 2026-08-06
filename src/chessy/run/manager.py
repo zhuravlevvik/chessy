@@ -59,7 +59,7 @@ class Run:
         manifest=json.loads((path/"run_manifest.json").read_text())
         if manifest.get("format")!="chessy-run-v1" or manifest.get("run_id")!=path.name: raise ValueError("invalid run manifest")
         raw=(path/"config.resolved.json").read_bytes(); config=load_resolved(raw)
-        from chessy.config.canonical import fingerprint
-        actual=fingerprint(config.model_dump(mode="json"))
+        from chessy.config.canonical import fingerprint_bytes
+        actual=fingerprint_bytes(raw)
         if manifest.get("config_fingerprint") != actual: raise ValueError("run config fingerprint mismatch")
         return cls(path,config,actual)
