@@ -6,9 +6,11 @@ interface Props {
   loading: boolean;
   error: string | null;
   onStart: (payload: CreateGamePayload) => void;
+  onObserve: () => void;
+  observerCount: number;
 }
 
-export function StartScreen({ models, loading, error, onStart }: Props) {
+export function StartScreen({ models, loading, error, onStart, onObserve, observerCount }: Props) {
   const [modelId, setModelId] = useState("");
   useEffect(() => { if (!modelId && models[0]) setModelId(models[0].id); }, [modelId, models]);
   const selectedModel = models.find((model) => model.id === modelId) ?? models[0];
@@ -67,6 +69,7 @@ export function StartScreen({ models, loading, error, onStart }: Props) {
       </label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary" disabled={loading || !models.length}>{loading ? "Подготавливаю доску…" : "Начать партию"}</button>
+      <button className="observer-button" type="button" onClick={onObserve}>Смотреть обучение{observerCount ? ` · ${observerCount}` : ""}</button>
     </form>
   </main>;
 }

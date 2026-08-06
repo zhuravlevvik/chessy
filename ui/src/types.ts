@@ -51,3 +51,10 @@ export interface CreateGamePayload {
   profile: "fast" | "normal" | "deep";
   feedback_opt_in: boolean;
 }
+
+export interface ObserverFrame { ply: number; fen: string; uci: string | null; san: string | null; }
+export interface ObserverGame {
+  id: string; run_id: string; kind: "live" | "archive"; status: "playing" | "complete";
+  generation: number; game_index: number; model_checksum: string; initial_fen: string; fen: string;
+  result: string; termination: string | null; plies?: number; frames?: ObserverFrame[];
+}

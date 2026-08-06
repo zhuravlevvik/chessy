@@ -17,6 +17,7 @@ from chessy.curriculum import CurriculumManager, CurriculumState
 from chessy.evaluation import MCTSAgent, create_league, run_arena
 from chessy.mcts import BatchingInferenceService, DirectModelEvaluator, MCTSConfig
 from chessy.model import ChessyModel, export_model, load_model_export, resolve_device
+from chessy.observer import TrainingObserver
 from chessy.replay import ReplayDataset, ReplaySampler, load_manifest, write_manifest, write_segment
 from chessy.run import Run
 from chessy.selfplay import SelfPlayCoordinator, TemperatureSchedule
@@ -127,6 +128,8 @@ def run_rl(*,root:Path,config_path:Path|None=None,resume:Path|None=None,device:s
         return run.path
     exports=run.path/"exports"; league_dir=run.path/"league"; league_dir.mkdir(exist_ok=True)
     curriculum=CurriculumManager(CurriculumState(**{k:v for k,v in state.curriculum_state.items() if k!="format"}),max_plies=sp.max_game_plies,max_material_imbalance=cur.reduced_max_material_imbalance)
+    observer_config=config.observer
+    observer=TrainingObserver(run.path,enabled=bool(observer_config and observer_config.enabled),archive_every_generations=1 if observer_config is None else observer_config.archive_every_generations,live_game_index=0 if observer_config is None else observer_config.live_game_index)
     sampler:ReplaySampler|None=None
     with StopController() as stopper:
         while state.global_step < config.scheduler.total_steps:
@@ -143,7 +146,7 @@ def run_rl(*,root:Path,config_path:Path|None=None,resume:Path|None=None,device:s
                     used=sum(p.stat().st_size for p in (root/replay.root_dir).rglob("*") if p.is_file() and not p.is_symlink())
                     if used>=replay.hard_disk_limit_bytes: raise ValueError("replay hard disk limit reached")
                 with BatchingInferenceService(model,max_batch_size=sp.inference_batch_size,max_batch_wait_ms=sp.inference_wait_ms) as service:
-                    coordinator=SelfPlayCoordinator(run.id,config.seed,state.generation,sp.actors,service,curriculum,MCTSConfig(simulations=sp.simulations,c_puct=sp.c_puct,root_noise=True,dirichlet_alpha=sp.dirichlet_alpha,dirichlet_epsilon=sp.dirichlet_epsilon,max_batch_size=sp.inference_batch_size,max_batch_wait_ms=sp.inference_wait_ms),TemperatureSchedule(sp.temperature.initial,sp.temperature.cutoff_ply,sp.temperature.final),incumbent_checksum)
+                    coordinator=SelfPlayCoordinator(run.id,config.seed,state.generation,sp.actors,service,curriculum,MCTSConfig(simulations=sp.simulations,c_puct=sp.c_puct,root_noise=True,dirichlet_alpha=sp.dirichlet_alpha,dirichlet_epsilon=sp.dirichlet_epsilon,max_batch_size=sp.inference_batch_size,max_batch_wait_ms=sp.inference_wait_ms),TemperatureSchedule(sp.temperature.initial,sp.temperature.cutoff_ply,sp.temperature.final),incumbent_checksum,observer)
                     games,incomplete=coordinator.run(games=sp.games_per_generation,stop_requested=stopper.requested)
                 if incomplete or stopper.requested.is_set():
                     run.events.append_event("selfplay_stopped",{"completed_discarded":len(games),"incomplete":incomplete})

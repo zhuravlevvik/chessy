@@ -23,6 +23,7 @@ from chessy.evaluation.arena import write_report
 from chessy.feedback.dataset import FeedbackDataset
 from chessy.mcts import BatchingInferenceService, DirectModelEvaluator, MCTSConfig
 from chessy.model import ChessyModel, export_model, load_model_export, resolve_device
+from chessy.observer import TrainingObserver
 from chessy.personal.dataset import PersonalDataset
 from chessy.personal.segment import verify_personal_manifest
 from chessy.personal.validation import validate, write_validation_report
@@ -267,6 +268,7 @@ def run_personal_rl(*, root: Path, config_path: Path | None = None, resume: Path
         report = _feedback_report(model, feedback, device=target, checksum=state.active_incumbent_checksum, config_fingerprint=run.fingerprint)
         path = write_validation_report(reports / f"incumbent-g{state.generation:04d}-feedback-{report['content_fingerprint'][:12]}.json", report); state.generation_feedback_baseline_report = str(path.relative_to(run.path))
     curriculum = CurriculumManager(CurriculumState(stage=curriculum_cfg.initial_stage, stage_mode=curriculum_cfg.stage_mode, stage_mix=curriculum_cfg.stage_mix.model_dump()), max_plies=sp.max_game_plies, max_material_imbalance=curriculum_cfg.reduced_max_material_imbalance)
+    observer_config = config.observer; observer = TrainingObserver(run.path, enabled=bool(observer_config and observer_config.enabled), archive_every_generations=1 if observer_config is None else observer_config.archive_every_generations, live_game_index=0 if observer_config is None else observer_config.live_game_index)
     if state.league_manifest_path is None:
         league = create_league(league_dir / "league-0000-initial.json", incumbent=state.active_incumbent_generation, export_path=state.active_incumbent_export, export_checksum=state.active_incumbent_checksum, stage=curriculum.state.stage, tags=["personal-initial"])
         state.league_manifest_path = str(league.path.relative_to(root)); state.manifest_fingerprints["league"] = str(league.content["fingerprint"])
@@ -285,7 +287,7 @@ def run_personal_rl(*, root: Path, config_path: Path | None = None, resume: Path
                     used = sum(path.stat().st_size for path in (root / replay_cfg.root_dir).rglob("*") if path.is_file() and not path.is_symlink())
                     if used >= replay_cfg.hard_disk_limit_bytes: raise ValueError("replay hard disk limit reached")
                 with BatchingInferenceService(model, max_batch_size=sp.inference_batch_size, max_batch_wait_ms=sp.inference_wait_ms) as service:
-                    coordinator = SelfPlayCoordinator(run.id, config.seed, state.generation, sp.actors, service, curriculum, MCTSConfig(simulations=sp.simulations, c_puct=sp.c_puct, root_noise=True, dirichlet_alpha=sp.dirichlet_alpha, dirichlet_epsilon=sp.dirichlet_epsilon, max_batch_size=sp.inference_batch_size, max_batch_wait_ms=sp.inference_wait_ms), TemperatureSchedule(sp.temperature.initial, sp.temperature.cutoff_ply, sp.temperature.final), state.active_incumbent_checksum)
+                    coordinator = SelfPlayCoordinator(run.id, config.seed, state.generation, sp.actors, service, curriculum, MCTSConfig(simulations=sp.simulations, c_puct=sp.c_puct, root_noise=True, dirichlet_alpha=sp.dirichlet_alpha, dirichlet_epsilon=sp.dirichlet_epsilon, max_batch_size=sp.inference_batch_size, max_batch_wait_ms=sp.inference_wait_ms), TemperatureSchedule(sp.temperature.initial, sp.temperature.cutoff_ply, sp.temperature.final), state.active_incumbent_checksum, observer)
                     games, incomplete = coordinator.run(games=sp.games_per_generation, stop_requested=stopper.requested)
                 if incomplete or stopper.requested.is_set():
                     state.stop_reason = stopper.reason or "stop_during_selfplay"; _snapshot(run, model, optimizer, scheduler, None, generator, state, "stop", root); return run.path

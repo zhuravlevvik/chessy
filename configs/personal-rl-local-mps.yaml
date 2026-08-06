@@ -12,6 +12,7 @@ replay: {root_dir: replay/personal-rl, samples_per_segment: 16384, active_max_sa
 rl: {policy_loss_weight: 1.0, value_loss_weight: 1.0, train_steps_per_generation: 250, batch_size: 32, gradient_clip_norm: 1.0}
 curriculum: {initial_stage: endgames, stage_mode: manual, stage_mix: {endgames: 1.0, reduced: 0.0, full: 0.0}, reduced_max_material_imbalance: 12}
 evaluation: {games_per_match: 40, simulations: 96, promotion_min_score: 0.55, promotion_min_games: 40, confidence_level: 0.95, require_lower_confidence_above: 0.5}
+observer: {enabled: true, archive_every_generations: 5, live_game_index: 0}
 personal_rl:
   enabled: true
   incumbent_export: artifacts/personal_feedback

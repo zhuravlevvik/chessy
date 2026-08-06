@@ -23,3 +23,4 @@ replay: {root_dir: replay, samples_per_segment: 16, active_max_samples: 64, rece
 rl: {policy_loss_weight: 1.0, value_loss_weight: 1.0, train_steps_per_generation: 2, batch_size: 2, gradient_clip_norm: 1.0}
 curriculum: {initial_stage: endgames, stage_mode: manual, stage_mix: {endgames: 1.0, reduced: 0.0, full: 0.0}}
 evaluation: {games_per_match: 2, simulations: 4, promotion_min_score: 0.55, promotion_min_games: 40}
+observer: {enabled: true, archive_every_generations: 1, live_game_index: 0}

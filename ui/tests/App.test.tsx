@@ -25,6 +25,7 @@ describe("Chessy UI", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/models") return new Response(JSON.stringify({ models: [model] }), { status: 200 });
+      if (url === "/api/observer/games") return new Response(JSON.stringify({ games: [] }), { status: 200 });
       if (url === "/api/games" && init?.method === "POST") return new Response(JSON.stringify(state), { status: 201 });
       return new Response(JSON.stringify({ saved: true }), { status: 200 });
     }));
@@ -35,6 +36,22 @@ describe("Chessy UI", () => {
     expect(await screen.findByText("НЕ ОБУЧЕНА")).toBeVisible();
     expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(screen.getByText("Начать партию")).toBeEnabled();
+    expect(screen.getByText("Смотреть обучение")).toBeEnabled();
+  });
+
+  it("opens the training observer and renders a live position", async () => {
+    const live = { id: "run-live", run_id: "run", kind: "live", status: "playing", generation: 3, game_index: 0, model_checksum: "a".repeat(64), initial_fen: "start", fen: "after-e4", result: "*", termination: null, plies: 1 };
+    vi.mocked(fetch).mockImplementation(async (url: string) => {
+      if (url === "/api/models") return new Response(JSON.stringify({ models: [model] }), { status: 200 });
+      if (url === "/api/observer/games") return new Response(JSON.stringify({ games: [live] }), { status: 200 });
+      if (url === "/api/observer/games/run-live") return new Response(JSON.stringify({ ...live, frames: [{ ply: 0, fen: "start", uci: null, san: null }, { ply: 1, fen: "after-e4", uci: "e2e4", san: "e4" }] }), { status: 200 });
+      return new Response("{}", { status: 404 });
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByText("Смотреть обучение · 1"));
+    expect(await screen.findByText("● LIVE")).toBeVisible();
+    await waitFor(() => expect(screen.getByText(/Ход 1\/1/)).toBeVisible());
+    expect(boardCapture.options.position).toBe("after-e4");
   });
 
   it("sends the exact create-game payload", async () => {

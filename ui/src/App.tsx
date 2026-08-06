@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { createGame, getModels, saveFeedback } from "./api";
+import { createGame, getModels, getObserverGame, getObserverGames, saveFeedback } from "./api";
 import { GameView } from "./components/GameView";
 import { StartScreen } from "./components/StartScreen";
-import type { CreateGamePayload, GameState, ModelInfo, ServerEvent } from "./types";
+import { ObserverView } from "./components/ObserverView";
+import type { CreateGamePayload, GameState, ModelInfo, ObserverGame, ServerEvent } from "./types";
 
 function stateFromEvent(event: ServerEvent): GameState | null {
   if ("state" in event.payload && event.payload.state) return event.payload.state;
@@ -18,10 +19,12 @@ export default function App() {
   const [connection, setConnection] = useState<"connected" | "reconnecting" | "disconnected">("disconnected");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackDeclined, setFeedbackDeclined] = useState(false);
+  const [observing, setObserving] = useState(false); const [observerGames, setObserverGames] = useState<ObserverGame[]>([]); const [observed, setObserved] = useState<ObserverGame | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const lastSequence = useRef(0);
 
-  useEffect(() => { getModels().then(setModels).catch((reason) => setError(reason.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { Promise.all([getModels().then(setModels), getObserverGames().then(setObserverGames)]).catch((reason) => setError(reason.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { if (!observing) return; const refresh = async () => { const games = await getObserverGames(); setObserverGames(games); const live = observed?.kind === "live" ? observed.id : games.find((item) => item.kind === "live")?.id; if (live) setObserved(await getObserverGame(live)); }; refresh().catch(() => {}); const timer = window.setInterval(() => refresh().catch(() => {}), 1000); return () => window.clearInterval(timer); }, [observing, observed?.id, observed?.kind]);
 
   function connect(gameId: string) {
     socket.current?.close();
@@ -57,7 +60,8 @@ export default function App() {
     socket.current.send(JSON.stringify({ version: "play-ws-v1", type, payload }));
   }
 
-  if (!game) return <StartScreen models={models} loading={loading} error={error} onStart={start} />;
+  if (observing) return <ObserverView games={observerGames} selected={observed} onSelect={(id) => getObserverGame(id).then(setObserved).catch((reason) => setError(reason.message))} onBack={() => { setObserving(false); setObserved(null); }} />;
+  if (!game) return <StartScreen models={models} loading={loading} error={error} onStart={start} observerCount={observerGames.length} onObserve={() => setObserving(true)} />;
   const visibleGame = feedbackDeclined ? { ...game, feedback_opt_in: false } : game;
   return <GameView
     state={visibleGame} connection={connection} error={error}

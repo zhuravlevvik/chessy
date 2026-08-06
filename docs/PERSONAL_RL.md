@@ -1,5 +1,9 @@
 # Personal RL
 
+Optional training observer shows one live self-play game and archives a
+periodic visual history without affecting replay sampling. See
+`docs/TRAINING_OBSERVER.md`.
+
 Personal RL strengthens a named personal model while anchoring it to the
 owner's frozen historical training data.  It is not online learning: saving
 feedback never starts training automatically.

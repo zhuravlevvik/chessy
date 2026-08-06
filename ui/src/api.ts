@@ -1,4 +1,4 @@
-import type { CreateGamePayload, GameState, ModelInfo } from "./types";
+import type { CreateGamePayload, GameState, ModelInfo, ObserverGame } from "./types";
 
 async function checked<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -31,4 +31,13 @@ export async function saveFeedback(gameId: string): Promise<void> {
 
 export function pgnUrl(gameId: string): string {
   return `/api/games/${gameId}/pgn`;
+}
+
+export async function getObserverGames(): Promise<ObserverGame[]> {
+  const response = await fetch("/api/observer/games");
+  return (await checked<{ games: ObserverGame[] }>(response)).games ?? [];
+}
+
+export async function getObserverGame(id: string): Promise<ObserverGame> {
+  return checked<ObserverGame>(await fetch(`/api/observer/games/${encodeURIComponent(id)}`));
 }
