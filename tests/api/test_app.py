@@ -24,7 +24,7 @@ class UniformEvaluator:
 
 
 def make_client(tmp_path: Path, *, static: bool = False) -> tuple[TestClient, SessionRegistry]:
-    info = ModelInfo("random-untrained-seed-0", "Random untrained (seed 0)", "random-seed-0", untrained=True, random_seed=0)
+    info = ModelInfo("random-untrained-seed-0", "Random untrained (seed 0)", "0" * 64, untrained=True, random_seed=0)
     registry = SessionRegistry(
         [ModelRuntime(info, UniformEvaluator())],
         feedback_dir=tmp_path / "feedback",

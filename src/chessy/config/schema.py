@@ -1,5 +1,6 @@
 """Strict source-config contract for reproducible training runs."""
 from __future__ import annotations
+import math
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from chessy.model import ModelConfig
@@ -153,6 +154,31 @@ class PersonalizationConfig(StrictModel):
             raise ValueError("at least one personal loss weight must be positive")
         return self
 
+class HumanFeedbackConfig(StrictModel):
+    enabled: bool = False
+    dataset_manifest: str | None = None
+    sample_weight: float = Field(default=4.0, gt=0)
+    max_batch_fraction: float = Field(default=.25, gt=0, le=.5)
+    max_positions_per_game: int = Field(default=16, gt=0)
+    cache_segments: int = Field(default=1, gt=0)
+    historical_regression_tolerance: float = Field(default=.01, ge=0)
+    feedback_min_delta: float = Field(default=.0001, ge=0)
+    @field_validator("sample_weight", "max_batch_fraction", "historical_regression_tolerance", "feedback_min_delta")
+    @classmethod
+    def finite_number(cls, value: float) -> float:
+        if not math.isfinite(value): raise ValueError("human feedback numeric settings must be finite")
+        return value
+    @field_validator("dataset_manifest")
+    @classmethod
+    def safe_path(cls, value: str | None) -> str | None:
+        if value is None: return None
+        if not value or value.startswith("/") or ".." in value.split("/"): raise ValueError("feedback manifest path must be relative and safe")
+        return value
+    @model_validator(mode="after")
+    def enabled_needs_manifest(self) -> "HumanFeedbackConfig":
+        if self.enabled != (self.dataset_manifest is not None): raise ValueError("feedback dataset_manifest is required exactly when feedback is enabled")
+        return self
+
 class ChessyConfig(StrictModel):
     format: Literal["chessy-config-v1"] = "chessy-config-v1"; name: str = Field(min_length=1, max_length=80)
     seed: int = Field(ge=0); device: Literal["auto", "cpu", "mps", "cuda"] = "auto"
@@ -165,6 +191,7 @@ class ChessyConfig(StrictModel):
     curriculum: CurriculumConfig | None = None
     evaluation: EvaluationConfig | None = None
     personalization: PersonalizationConfig | None = None
+    human_feedback: HumanFeedbackConfig | None = None
 
     @model_validator(mode="after")
     def complete_rl_sections(self) -> "ChessyConfig":
@@ -175,4 +202,10 @@ class ChessyConfig(StrictModel):
             raise ValueError("personalization and RL sections cannot be mixed in one run config v1")
         if self.personalization is not None and self.artifacts.dataset_manifest != self.personalization.dataset_manifest:
             raise ValueError("artifacts.dataset_manifest must pin personalization.dataset_manifest")
+        if self.personalization is not None and self.training.batch_size != self.personalization.batch_size:
+            raise ValueError("training.batch_size must match personalization.batch_size")
+        if self.human_feedback is not None and self.human_feedback.enabled and any(value is not None for value in values):
+            raise ValueError("human feedback cannot be enabled in an RL config")
+        if self.human_feedback is not None and self.human_feedback.enabled and self.personalization is None:
+            raise ValueError("human feedback requires personalization")
         return self

@@ -5,7 +5,7 @@ import torch
 from torch.nn import functional as F
 
 
-def supervised_policy_value_loss(policy_logits: torch.Tensor, value_logits: torch.Tensor, target_action: torch.Tensor, legal_mask: torch.Tensor, value_class: torch.Tensor, *, policy_weight: float = 1.0, value_weight: float = .25) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+def supervised_policy_value_loss(policy_logits: torch.Tensor, value_logits: torch.Tensor, target_action: torch.Tensor, legal_mask: torch.Tensor, value_class: torch.Tensor, *, policy_weight: float = 1.0, value_weight: float = .25, sample_weight: torch.Tensor | None = None) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     if policy_logits.ndim != 2 or policy_logits.shape[1] != 4672 or value_logits.shape != (policy_logits.shape[0], 3):
         raise ValueError("incompatible supervised model outputs")
     if target_action.shape != (policy_logits.shape[0],) or value_class.shape != target_action.shape or legal_mask.shape != policy_logits.shape:
@@ -21,10 +21,17 @@ def supervised_policy_value_loss(policy_logits: torch.Tensor, value_logits: torc
     masked = policy_logits.masked_fill(~legal_mask, float("-inf"))
     policy_per_sample = F.cross_entropy(masked, target_action, reduction="none")
     value_per_sample = F.cross_entropy(value_logits, value_class, reduction="none")
-    policy_loss, value_loss = policy_per_sample.mean(), value_per_sample.mean()
+    if sample_weight is None:
+        weights = torch.ones_like(policy_per_sample)
+    else:
+        if sample_weight.shape != target_action.shape or not sample_weight.is_floating_point() or not torch.isfinite(sample_weight).all() or (sample_weight <= 0).any():
+            raise ValueError("invalid supervised sample weights")
+        weights = sample_weight
+    total_weight = weights.sum()
+    policy_loss, value_loss = (policy_per_sample * weights).sum() / total_weight, (value_per_sample * weights).sum() / total_weight
     total = policy_weight * policy_loss + value_weight * value_loss
     if not torch.isfinite(total):
         raise ValueError("non-finite supervised loss")
     probabilities = masked.softmax(1)
     true_probability = probabilities.gather(1, target_action[:, None]).squeeze(1)
-    return total, {"policy_loss": policy_loss, "value_loss": value_loss, "policy_per_sample": policy_per_sample, "value_per_sample": value_per_sample, "true_move_probability": true_probability, "top1": (masked.argmax(1) == target_action).float(), "value_accuracy": (value_logits.argmax(1) == value_class).float()}
+    return total, {"policy_loss": policy_loss, "value_loss": value_loss, "policy_per_sample": policy_per_sample, "value_per_sample": value_per_sample, "sample_weight": weights, "true_move_probability": true_probability, "top1": (masked.argmax(1) == target_action).float(), "value_accuracy": (value_logits.argmax(1) == value_class).float()}
