@@ -4,11 +4,16 @@ version = "0.1.0"
 description = "A personal self-learning and personalized chess bot"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "fastapi>=0.116,<1",
   "numpy>=2,<3",
   "python-chess==1.999",
   "safetensors>=0.5,<1",
   "torch>=2.7,<3",
+  "uvicorn[standard]>=0.35,<1",
 ]
+
+[project.scripts]
+chessy = "chessy.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -23,5 +28,6 @@ addopts = "-q"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28,<1",
     "pytest>=8,<10",
 ]
