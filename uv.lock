@@ -55,7 +55,9 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "numpy" },
+    { name = "pydantic" },
     { name = "python-chess" },
+    { name = "pyyaml" },
     { name = "safetensors" },
     { name = "torch" },
     { name = "uvicorn", extra = ["standard"] },
@@ -71,7 +73,9 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "numpy", specifier = ">=2,<3" },
+    { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "python-chess", specifier = "==1.999" },
+    { name = "pyyaml", specifier = ">=6,<7" },
     { name = "safetensors", specifier = ">=0.5,<1" },
     { name = "torch", specifier = ">=2.7,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
