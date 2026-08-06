@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-06T12:17:42.083706+00:00",
+  "engine": "Stockfish 18",
+  "nodes_per_position": 5000,
+  "accuracy": "Lichess-compatible win-percentage accuracy",
+  "threshold": 82.0,
+  "minimum_user_moves": 10,
+  "standard_valid_games": 5089,
+  "excluded_too_short": 315,
+  "analysed_games": 4774,
+  "analysed_user_moves": 158697,
+  "retained_games": 2066,
+  "skipped_nonstandard_or_invalid": 155,
+  "errors": []
+}

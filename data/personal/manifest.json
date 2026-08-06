@@ -1,0 +1,19 @@
+{
+  "created_at": "2026-08-06T12:17:55.333580+00:00",
+  "full_game_accuracy_threshold": 82.0,
+  "good_move_accuracy_threshold": 85.0,
+  "full_games": 2066,
+  "policy_samples": 132734,
+  "samples_by_kind": {
+    "good_move": 58170,
+    "full_game": 74564
+  },
+  "samples_by_source": {
+    "chess.com": 81901,
+    "lichess": 50833
+  },
+  "files": {
+    "full_games": "full_style_games.pgn",
+    "policy_samples": "policy_samples.jsonl"
+  }
+}

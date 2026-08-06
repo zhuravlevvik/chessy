@@ -1,0 +1,60 @@
+{
+  "created_at": "2026-08-06T12:22:02.907434+00:00",
+  "strategy": "chronological, grouped by game and calendar date",
+  "requested_ratios": {
+    "train": 0.8,
+    "val": 0.1,
+    "test": 0.1
+  },
+  "total_samples": 132734,
+  "splits": {
+    "train": {
+      "file": "train.jsonl",
+      "samples": 106104,
+      "ratio": 0.7993731825,
+      "games": 3809,
+      "date_from": "2021-01-14",
+      "date_to": "2026-01-22",
+      "samples_by_kind": {
+        "good_move": 47102,
+        "full_game": 59002
+      },
+      "samples_by_source": {
+        "chess.com": 57173,
+        "lichess": 48931
+      }
+    },
+    "val": {
+      "file": "val.jsonl",
+      "samples": 13337,
+      "ratio": 0.1004791538,
+      "games": 478,
+      "date_from": "2026-01-23",
+      "date_to": "2026-05-01",
+      "samples_by_kind": {
+        "full_game": 8008,
+        "good_move": 5329
+      },
+      "samples_by_source": {
+        "chess.com": 12656,
+        "lichess": 681
+      }
+    },
+    "test": {
+      "file": "test.jsonl",
+      "samples": 13293,
+      "ratio": 0.1001476637,
+      "games": 487,
+      "date_from": "2026-05-02",
+      "date_to": "2026-08-06",
+      "samples_by_kind": {
+        "good_move": 5739,
+        "full_game": 7554
+      },
+      "samples_by_source": {
+        "chess.com": 12072,
+        "lichess": 1221
+      }
+    }
+  }
+}

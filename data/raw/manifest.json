@@ -1,0 +1,15 @@
+{
+  "exported_at": "2026-08-06T11:47:24.181486+00:00",
+  "sources": {
+    "chess_com": {
+      "username": "mu1876",
+      "games": 3212,
+      "file": "chess_com_mu1876.pgn"
+    },
+    "lichess": {
+      "username": "mu1878",
+      "games": 2032,
+      "file": "lichess_mu1878.pgn"
+    }
+  }
+}

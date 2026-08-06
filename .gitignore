@@ -1,0 +1,38 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS and editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Python tooling and build outputs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Frontend dependencies and compiled assets
+ui/node_modules/
+ui/dist/
+
+# Local training runs, model weights, and replay data
+runs/
+data/replay/
+data/human_feedback/
+*.safetensors
+*.pt
+*.pth
+
+# Reproducible generated datasets; keep their small manifest.json files tracked
+data/raw/*.pgn
+data/quality/*.csv
+data/quality/*.pgn
+data/personal/*.jsonl
+data/personal/*.pgn
+data/personal/splits/*.jsonl
