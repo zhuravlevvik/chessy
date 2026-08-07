@@ -19,13 +19,20 @@ export default function App() {
   const [connection, setConnection] = useState<"connected" | "reconnecting" | "disconnected">("disconnected");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackDeclined, setFeedbackDeclined] = useState(false);
+  const [modelsRefreshing, setModelsRefreshing] = useState(false);
   const [observing, setObserving] = useState(false); const [observerGames, setObserverGames] = useState<ObserverGame[]>([]); const [observed, setObserved] = useState<ObserverGame | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const lastSequence = useRef(0);
 
   useEffect(() => { Promise.all([getModels().then(setModels), getObserverGames().then(setObserverGames)]).catch((reason) => setError(reason.message)).finally(() => setLoading(false)); }, []);
-  useEffect(() => { if (game || observing) return; const refresh = () => getModels().then(setModels).catch(() => {}); const timer = window.setInterval(refresh, 2000); return () => window.clearInterval(timer); }, [game, observing]);
   useEffect(() => { if (!observing) return; const refresh = async () => { const games = await getObserverGames(); setObserverGames(games); const live = observed?.kind === "live" ? observed.id : games.find((item) => item.kind === "live")?.id; if (live) setObserved(await getObserverGame(live)); }; refresh().catch(() => {}); const timer = window.setInterval(() => refresh().catch(() => {}), 1000); return () => window.clearInterval(timer); }, [observing, observed?.id, observed?.kind]);
+
+  async function refreshModels() {
+    setModelsRefreshing(true); setError(null);
+    try { setModels(await getModels()); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось обновить список моделей"); }
+    finally { setModelsRefreshing(false); }
+  }
 
   function connect(gameId: string) {
     socket.current?.close();
@@ -62,7 +69,7 @@ export default function App() {
   }
 
   if (observing) return <ObserverView games={observerGames} selected={observed} onSelect={(id) => getObserverGame(id).then(setObserved).catch((reason) => setError(reason.message))} onBack={() => { setObserving(false); setObserved(null); }} />;
-  if (!game) return <StartScreen models={models} loading={loading} error={error} onStart={start} observerCount={observerGames.length} onObserve={() => setObserving(true)} />;
+  if (!game) return <StartScreen models={models} loading={loading} modelsRefreshing={modelsRefreshing} error={error} onStart={start} onRefreshModels={refreshModels} observerCount={observerGames.length} onObserve={() => setObserving(true)} />;
   return <GameView
     state={game} connection={connection} error={error}
     onMove={(uci) => send("move", { uci })} onResign={() => send("resign")} onDraw={() => send("offer_draw")}

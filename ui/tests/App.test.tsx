@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { stateFromEvent } from "../src/App";
 import { GameView } from "../src/components/GameView";
@@ -21,7 +21,7 @@ class FakeWebSocket {
 }
 
 describe("Chessy UI", () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => { cleanup(); vi.useRealTimers(); });
   beforeEach(() => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -55,8 +55,7 @@ describe("Chessy UI", () => {
     expect(boardCapture.options.position).toBe("after-e4");
   });
 
-  it("refreshes the model catalog while the start screen is open", async () => {
-    vi.useFakeTimers();
+  it("refreshes the model catalog on request", async () => {
     const candidate = { ...model, id: "candidate-250", name: "Chessy · step 250", checksum: "a".repeat(64), untrained: false };
     let modelRequests = 0;
     vi.mocked(fetch).mockImplementation(async (url: string) => {
@@ -64,12 +63,12 @@ describe("Chessy UI", () => {
       if (url === "/api/observer/games") return new Response(JSON.stringify({ games: [] }), { status: 200 });
       return new Response("{}", { status: 404 });
     });
-    const view = render(<App />);
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    render(<App />);
+    expect(await screen.findByText("НЕ ОБУЧЕНА")).toBeVisible();
     expect(screen.queryByRole("option", { name: candidate.name })).not.toBeInTheDocument();
-    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-    expect(screen.getByRole("option", { name: candidate.name })).toBeVisible();
-    view.unmount();
+    fireEvent.click(screen.getByRole("button", { name: "Обновить список" }));
+    expect(await screen.findByRole("option", { name: candidate.name })).toBeVisible();
+    expect(modelRequests).toBe(2);
   });
 
   it("sends the exact create-game payload", async () => {

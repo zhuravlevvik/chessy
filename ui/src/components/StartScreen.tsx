@@ -4,13 +4,15 @@ import type { CreateGamePayload, ModelInfo } from "../types";
 interface Props {
   models: ModelInfo[];
   loading: boolean;
+  modelsRefreshing: boolean;
   error: string | null;
   onStart: (payload: CreateGamePayload) => void;
+  onRefreshModels: () => void;
   onObserve: () => void;
   observerCount: number;
 }
 
-export function StartScreen({ models, loading, error, onStart, onObserve, observerCount }: Props) {
+export function StartScreen({ models, loading, modelsRefreshing, error, onStart, onRefreshModels, onObserve, observerCount }: Props) {
   const [modelId, setModelId] = useState("");
   useEffect(() => { if (!modelId && models[0]) setModelId(models[0].id); }, [modelId, models]);
   const selectedModel = models.find((model) => model.id === modelId) ?? models[0];
@@ -35,11 +37,11 @@ export function StartScreen({ models, loading, error, onStart, onObserve, observ
       <p className="lead">Chessy думает через нейросеть и MCTS. Правила, часы и результат всегда контролирует локальный сервер.</p>
     </section>
     <form className="start-card" onSubmit={submit}>
-      <label>Модель
-        <select name="model_id" required disabled={!models.length} value={modelId} onChange={(event) => setModelId(event.target.value)}>
-          {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-        </select>
-      </label>
+      <div className="model-picker"><label>Модель
+          <select name="model_id" required disabled={!models.length} value={modelId} onChange={(event) => setModelId(event.target.value)}>
+            {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+          </select>
+        </label><button className="model-refresh" type="button" onClick={onRefreshModels} disabled={modelsRefreshing}>{modelsRefreshing ? "Обновляю…" : "Обновить список"}</button></div>
       {selectedModel?.untrained && <div className="warning" role="status">
         <span>НЕ ОБУЧЕНА</span>
         Случайная сеть знает только правила через MCTS. Это первая точка отсчёта, не заявка на шахматную силу.

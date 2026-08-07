@@ -35,9 +35,10 @@ the current game automatically or replay any archived generation with manual
 move controls.
 
 The play screen also discovers `chessy-model-v1` exports below
-`runs/*/exports/` automatically. Its model list refreshes while the start screen
-is open; weights are loaded only after a discovered model is selected for a
-game, so merely listing checkpoints does not consume model memory.
+`runs/*/exports/` automatically. Use **Обновить список** on the start screen
+after a new candidate appears; weights are loaded only after a discovered model
+is selected for a game, so merely listing checkpoints does not consume model
+memory.
 
 Observed self-play includes root noise and temperature because it is a real
 training game, not a strength evaluation. Arena reports remain the source of
