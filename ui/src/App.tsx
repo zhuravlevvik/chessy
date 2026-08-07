@@ -24,6 +24,7 @@ export default function App() {
   const lastSequence = useRef(0);
 
   useEffect(() => { Promise.all([getModels().then(setModels), getObserverGames().then(setObserverGames)]).catch((reason) => setError(reason.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { if (game || observing) return; const refresh = () => getModels().then(setModels).catch(() => {}); const timer = window.setInterval(refresh, 2000); return () => window.clearInterval(timer); }, [game, observing]);
   useEffect(() => { if (!observing) return; const refresh = async () => { const games = await getObserverGames(); setObserverGames(games); const live = observed?.kind === "live" ? observed.id : games.find((item) => item.kind === "live")?.id; if (live) setObserved(await getObserverGame(live)); }; refresh().catch(() => {}); const timer = window.setInterval(() => refresh().catch(() => {}), 1000); return () => window.clearInterval(timer); }, [observing, observed?.id, observed?.kind]);
 
   function connect(gameId: string) {

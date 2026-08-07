@@ -65,6 +65,24 @@ def test_health_models_validation_and_static(tmp_path: Path) -> None:
         assert "Chessy" in client.get("/").text
 
 
+def test_discovered_model_is_listed_and_loaded_only_when_selected(tmp_path: Path) -> None:
+    initial = ModelInfo("random-untrained-seed-0", "Random", "0" * 64, untrained=True)
+    discovered = ModelInfo("candidate-abc", "Candidate · step 250", "a" * 64)
+    loaded: list[Path] = []
+    source = tmp_path / "candidate"
+    def loader(path: Path, info: ModelInfo) -> ModelRuntime:
+        loaded.append(path); return ModelRuntime(info, UniformEvaluator())
+    registry = SessionRegistry([ModelRuntime(initial, UniformEvaluator())], feedback_dir=tmp_path / "feedback", model_catalog=lambda: [(discovered, source)], model_loader=loader, simulations_override=1)
+    client = TestClient(create_app(registry))
+    with client:
+        models = client.get("/api/models").json()["models"]
+        assert [model["id"] for model in models] == [discovered.id, initial.id]
+        assert loaded == []
+        response = client.post("/api/games", json={"model_id": discovered.id, "color": "white", "time_control": "untimed", "profile": "fast", "feedback_opt_in": False})
+        assert response.status_code == 201
+        assert loaded == [source]
+
+
 def test_websocket_authoritative_flow_reconnect_errors_pgn_and_feedback(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
     with client:

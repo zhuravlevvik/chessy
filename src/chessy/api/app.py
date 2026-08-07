@@ -124,7 +124,7 @@ def create_app(registry: SessionRegistry, *, static_dir: Path | None = None) -> 
 
     @app.get("/api/models")
     async def models() -> dict[str, object]:
-        return {"models": registry.public_models()}
+        return {"models": await asyncio.to_thread(registry.public_models)}
 
     @app.get("/api/observer/games")
     async def observer_games() -> dict[str, object]:
@@ -142,7 +142,7 @@ def create_app(registry: SessionRegistry, *, static_dir: Path | None = None) -> 
     @app.post("/api/games", status_code=201)
     async def create_game(request: CreateGameRequest) -> dict[str, object]:
         try:
-            session = registry.create(
+            session = await asyncio.to_thread(registry.create,
                 model_id=request.model_id,
                 color=request.color,
                 time_control=request.time_control,

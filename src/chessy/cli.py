@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import socket
 import threading
 import webbrowser
@@ -18,7 +17,7 @@ import uvicorn
 from chessy.api import ModelRuntime, SessionRegistry, create_app
 from chessy.mcts import BatchingInferenceService
 from chessy.model import ChessyModel, load_model_export, resolve_device
-from chessy.play import ModelInfo
+from chessy.play import ModelInfo, discover_model_exports, model_info_from_export
 
 LOOPBACK_HOST = "127.0.0.1"
 
@@ -127,25 +126,9 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _safe_model_id(name: str, checksum: str) -> str:
-    stem = re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-").lower() or "model"
-    return f"{stem[:48]}-{checksum[:12]}"
-
-
-def _export_runtime(path: Path, device: torch.device) -> tuple[ModelRuntime, BatchingInferenceService]:
+def _export_runtime(path: Path, device: torch.device, info: ModelInfo | None = None) -> tuple[ModelRuntime, BatchingInferenceService]:
+    info = info or model_info_from_export(path)
     model = load_model_export(path, device=device)
-    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-    checksum = manifest["weights"]["sha256"]
-    metadata = manifest.get("metadata", {})
-    name = metadata.get("name", path.name) if isinstance(metadata, dict) else path.name
-    if not isinstance(name, str):
-        name = path.name
-    info = ModelInfo(
-        id=_safe_model_id(name, checksum),
-        name=name[:100],
-        checksum=checksum,
-        architecture=manifest["architecture"],
-    )
     service = BatchingInferenceService(model).start()
     return ModelRuntime(info, service), service
 
@@ -206,11 +189,17 @@ def _run_play(args: argparse.Namespace) -> int:
             services.append(service)
         if len({runtime.info.id for runtime in runtimes}) != len(runtimes):
             raise SystemExit("model exports resolve to duplicate safe IDs")
+        def load_discovered(path: Path, info: ModelInfo) -> ModelRuntime:
+            runtime, service = _export_runtime(path, device, info); services.append(service)
+            print(f"Loaded model on demand: {info.name}", flush=True)
+            return runtime
         registry = SessionRegistry(
             runtimes,
             feedback_dir=feedback_dir,
             observer_runs_dir=_project_root() / "runs",
             simulations_override=args.simulations,
+            model_catalog=lambda: discover_model_exports(_project_root() / "runs"),
+            model_loader=load_discovered,
         )
         app = create_app(registry, static_dir=static_dir)
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
