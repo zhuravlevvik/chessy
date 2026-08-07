@@ -62,12 +62,11 @@ export default function App() {
 
   if (observing) return <ObserverView games={observerGames} selected={observed} onSelect={(id) => getObserverGame(id).then(setObserved).catch((reason) => setError(reason.message))} onBack={() => { setObserving(false); setObserved(null); }} />;
   if (!game) return <StartScreen models={models} loading={loading} error={error} onStart={start} observerCount={observerGames.length} onObserve={() => setObserving(true)} />;
-  const visibleGame = feedbackDeclined ? { ...game, feedback_opt_in: false } : game;
   return <GameView
-    state={visibleGame} connection={connection} error={error}
+    state={game} connection={connection} error={error}
     onMove={(uci) => send("move", { uci })} onResign={() => send("resign")} onDraw={() => send("offer_draw")}
     onNew={() => { socket.current?.close(); socket.current = null; setGame(null); setError(null); }}
-    feedbackSaving={feedbackSaving} onDeclineFeedback={() => setFeedbackDeclined(true)}
+    feedbackSaving={feedbackSaving} feedbackDeclined={feedbackDeclined} onDeclineFeedback={() => setFeedbackDeclined(true)}
     onSaveFeedback={async () => { setFeedbackSaving(true); try { await saveFeedback(game.game_id); setGame({ ...game, feedback_saved: true }); } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось сохранить"); } finally { setFeedbackSaving(false); } }}
   />;
 }

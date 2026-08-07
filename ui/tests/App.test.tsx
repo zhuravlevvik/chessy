@@ -67,6 +67,10 @@ describe("Chessy UI", () => {
     const { rerender } = render(<GameView {...props} state={{ ...state, status: "bot_thinking", turn: "black" }} />);
     expect(screen.getByText("Chessy считает варианты")).toBeVisible();
     expect(screen.getByText("Нет связи")).toBeVisible();
+    rerender(<GameView {...props} state={{ ...state, status: "finished", result: "0-1", termination: "resignation", feedback_opt_in: false }} />);
+    expect(screen.getByText("Добавить эту партию в обучение?")).toBeVisible();
+    fireEvent.click(screen.getByText("Добавить в обучение"));
+    expect(props.onSaveFeedback).toHaveBeenCalledOnce();
     rerender(<GameView {...props} state={{ ...state, status: "finished", result: "0-1", termination: "resignation", feedback_opt_in: true }} />);
     expect(screen.getByText("Чёрные победили")).toBeVisible();
     expect(screen.getByText("Скачать PGN")).toHaveAttribute("href", "/api/games/game-1/pgn");

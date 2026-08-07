@@ -65,7 +65,7 @@ export function StartScreen({ models, loading, error, onStart, onObserve, observ
         </div>
       </fieldset>
       <label className="check-row"><input name="feedback_opt_in" type="checkbox" />
-        <span><strong>Добавить мои ходы в обучение</strong><small>После партии Chessy ещё раз спросит подтверждение.</small></span>
+        <span><strong>Добавить мои ходы в обучение</strong><small>После партии выбор можно будет подтвердить или изменить.</small></span>
       </label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary" disabled={loading || !models.length}>{loading ? "Подготавливаю доску…" : "Начать партию"}</button>

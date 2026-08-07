@@ -175,7 +175,7 @@ def create_app(registry: SessionRegistry, *, static_dir: Path | None = None) -> 
     async def feedback(game_id: str, request: FeedbackRequest) -> dict[str, object]:
         session = get_session(game_id)
         try:
-            await asyncio.to_thread(save_human_feedback, session, registry.feedback_dir)
+            await asyncio.to_thread(save_human_feedback, session, registry.feedback_dir, confirmed=request.confirm)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except RuntimeError as exc:

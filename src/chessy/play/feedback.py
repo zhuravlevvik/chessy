@@ -52,13 +52,15 @@ def _human_result(session: GameSession) -> str:
     return "win" if won else "loss"
 
 
-def save_human_feedback(session: GameSession, root: Path) -> Path:
+def save_human_feedback(session: GameSession, root: Path, *, confirmed: bool = False) -> Path:
     """Persist confirmed human targets once, using sibling temp dir + rename."""
     with session.lock:
-        if not session.feedback_opt_in:
+        if not session.feedback_opt_in and not confirmed:
             raise PermissionError("feedback opt-in was not enabled for this game")
         if session.status != "finished":
             raise RuntimeError("feedback can only be saved after the game")
+        if confirmed:
+            session.feedback_opt_in = True
         if re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", session.id, re.I) is None:
             raise ValueError("feedback game ID must be a UUID")
         if re.fullmatch(r"[0-9a-f]{64}", session.model.checksum) is None:

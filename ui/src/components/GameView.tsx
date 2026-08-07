@@ -14,6 +14,7 @@ interface Props {
   onSaveFeedback: () => void;
   onDeclineFeedback: () => void;
   feedbackSaving: boolean;
+  feedbackDeclined?: boolean;
 }
 
 function formatClock(seconds: number | null): string {
@@ -130,10 +131,14 @@ export function GameView(props: Props) {
         <button onClick={props.onDraw}>Предложить ничью</button><button className="danger" onClick={props.onResign}>Сдаться</button>
       </div> : <div className="post-game">
         <a className="download" href={pgnUrl(state.game_id)} download>Скачать PGN</a>
-        {state.feedback_opt_in && !state.feedback_saved && <div className="feedback-confirm">
+        {state.feedback_opt_in && !state.feedback_saved && !props.feedbackDeclined && <div className="feedback-confirm">
           <strong>Сохранить ваши ходы для обучения?</strong><p>Будут записаны только ваши решения; ходы Chessy останутся контекстом.</p>
           <button onClick={props.onSaveFeedback} disabled={props.feedbackSaving}>{props.feedbackSaving ? "Сохраняю…" : "Сохранить"}</button>
           <button onClick={props.onDeclineFeedback}>Не сохранять</button>
+        </div>}
+        {!state.feedback_saved && (!state.feedback_opt_in || props.feedbackDeclined) && <div className="feedback-confirm feedback-offer">
+          <strong>Добавить эту партию в обучение?</strong><p>Решение можно принять сейчас, даже если галочка перед партией не была включена.</p>
+          <button onClick={props.onSaveFeedback} disabled={props.feedbackSaving}>{props.feedbackSaving ? "Сохраняю…" : "Добавить в обучение"}</button>
         </div>}
         {state.feedback_saved && <p className="success">Ходы сохранены ✓</p>}
         <button className="primary" onClick={props.onNew}>Новая партия</button>

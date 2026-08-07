@@ -68,8 +68,9 @@ def test_health_models_validation_and_static(tmp_path: Path) -> None:
 def test_websocket_authoritative_flow_reconnect_errors_pgn_and_feedback(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
     with client:
-        game = create_game(client, feedback_opt_in=True)
+        game = create_game(client, feedback_opt_in=False)
         game_id = game["game_id"]
+        assert game["feedback_opt_in"] is False
         with client.websocket_connect(f"/api/games/{game_id}/ws") as websocket:
             initial = websocket.receive_json()
             assert initial["type"] == "state"
@@ -92,8 +93,11 @@ def test_websocket_authoritative_flow_reconnect_errors_pgn_and_feedback(tmp_path
         assert state["status"] == "finished"
         pgn = client.get(f"/api/games/{game_id}/pgn")
         assert pgn.status_code == 200 and "e4" in pgn.text
+        declined = client.post(f"/api/games/{game_id}/feedback", json={"confirm": False})
+        assert declined.status_code == 422
         saved = client.post(f"/api/games/{game_id}/feedback", json={"confirm": True})
         assert saved.json()["saved"] is True
+        assert client.get(f"/api/games/{game_id}").json()["feedback_opt_in"] is True
         assert len(list((tmp_path / "feedback" / game_id).iterdir())) == 3
 
 
