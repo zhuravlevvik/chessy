@@ -56,7 +56,7 @@ def _model_state(path: Path):
     run=Run.open(path); _,checked,_=select_snapshot(run); return checked
 
 
-def test_rl_stop_and_resume_matches_uninterrupted_weights(tmp_path: Path) -> None:
+def test_rl_stop_and_resume_matches_uninterrupted_weights(tmp_path: Path, capsys) -> None:
     config=tmp_path/"rl.yaml"; config.write_text(CONFIG)
     uninterrupted=run_rl(root=tmp_path,config_path=config)
     stopped=run_rl(root=tmp_path,config_path=config,stop_after_steps=1)
@@ -68,3 +68,8 @@ def test_rl_stop_and_resume_matches_uninterrupted_weights(tmp_path: Path) -> Non
     assert all(torch.equal(left["model_state"][key],right["model_state"][key]) for key in left["model_state"])
     replay_ref=right["run_state"]["replay_manifest"]
     assert replay_ref and (tmp_path/replay_ref).is_file()
+    output=capsys.readouterr().out
+    assert "self-play: 1/2" in output
+    assert "training: step=1/" in output
+    assert "arena: 1/2" in output
+    assert "stopped safely at step=1" in output

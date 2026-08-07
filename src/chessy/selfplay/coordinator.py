@@ -2,6 +2,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import threading
+from typing import Callable
 import numpy as np
 from chessy.curriculum.manager import CurriculumManager
 from chessy.mcts import Evaluator, MCTS, MCTSConfig
@@ -21,6 +22,7 @@ class SelfPlayCoordinator:
     schedule: TemperatureSchedule
     model_checksum: str
     observer: TrainingObserver | None = None
+    progress_update: Callable[[int, int, SelfPlayGame], None] | None = None
     def run(self, *, games: int, completed_indexes: set[int] | None = None, stop_requested: threading.Event | None = None) -> tuple[list[SelfPlayGame], list[int]]:
         completed_indexes=completed_indexes or set(); token=stop_requested or threading.Event(); assignments=[i for i in range(games) if i not in completed_indexes]
         def one(index:int):
@@ -32,4 +34,5 @@ class SelfPlayCoordinator:
             futures={pool.submit(one,index):index for index in assignments}
             for future in as_completed(futures):
                 item=future.result(); (completed.append(item) if item is not None else incomplete.append(futures[future])); self.observer.archive(item, self.model_checksum) if self.observer is not None and item is not None else None
+                if self.progress_update is not None and item is not None: self.progress_update(len(completed), len(assignments), item)
         return sorted(completed,key=lambda item:item.sealed.game_index), sorted(incomplete)

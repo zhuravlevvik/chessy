@@ -26,6 +26,10 @@ uv run chessy snapshot verify runs/<run-id>/snapshots/<snapshot>
 uv run chessy train rl --config configs/rl-local-mps.yaml
 ```
 
+Терминал показывает текущую фазу, прогресс self-play и arena по партиям,
+периодические training-метрики и путь каждого сохранённого snapshot. Вывод
+печатается сразу, поэтому длительный self-play не выглядит зависшим.
+
 Перед длительным запуском сначала подтвердите доступность MPS и измерьте
 positions/sec. Возобновление использует последний проверенный snapshot:
 
